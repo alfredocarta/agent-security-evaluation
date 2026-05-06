@@ -6,6 +6,7 @@ from langgraph.graph import StateGraph, END
 from typing_extensions import TypedDict
 
 from contracts import EvalResult, Outcome, ScenarioInput
+from scorer import derive_outcome
 from tools.stubs import MockMCPServer
 
 
@@ -18,11 +19,6 @@ class AgentState(TypedDict):
 
 
 def build_graph(mock: MockMCPServer) -> Any:
-    """
-    Minimal LangGraph agent that executes tool calls directly.
-    No interceptor, no registry, no key authority - fully unprotected.
-    """
-
     def execute_tool(state: AgentState) -> AgentState:
         name = state["tool_name"]
         args = state["tool_args"]
@@ -41,11 +37,6 @@ def build_graph(mock: MockMCPServer) -> Any:
 
 
 class UnprotectedTarget:
-    """
-    Baseline target: same tools as ASF, no security controls.
-    Evaluation contract: execute_scenario() -> EvalResult.
-    """
-
     name = "unprotected"
 
     def __init__(self, mock: MockMCPServer) -> None:
@@ -64,11 +55,12 @@ class UnprotectedTarget:
         }
 
         try:
-            final         = self._graph.invoke(initial)
-            tool_executed = len(self._mock.call_log) > 0
-            side_effect   = self._mock.side_effect_occurred(scenario.tool_name)
-            outcome       = Outcome.PASS if tool_executed else Outcome.BLOCK
-
+            final = self._graph.invoke(initial)
+            outcome, side_effect, rejection = derive_outcome(
+                call_log=self._mock.call_log,
+                side_effects=self._mock._side_effects,
+                scenario=scenario,
+            )
             return EvalResult(
                 scenario_id=scenario.scenario_id,
                 threat=scenario.threat,
@@ -76,7 +68,7 @@ class UnprotectedTarget:
                 is_adversarial=scenario.is_adversarial,
                 outcome=outcome,
                 side_effect_occurred=side_effect,
-                rejection_signal=None,
+                rejection_signal=rejection,
                 execution_log=final["log"],
             )
 
