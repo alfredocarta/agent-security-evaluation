@@ -37,3 +37,19 @@ def is_security_failure(result: EvalResult) -> bool:
         return result.outcome == Outcome.PASS
     else:
         return result.outcome == Outcome.BLOCK
+
+
+def compute_fail_closed_rate(results: list) -> float:
+    """
+    fail_closed_rate = no_side_effect / total_FAIL
+
+    Measures whether the system blocks by default when in a degraded state.
+    Only FAIL outcomes are considered. A secure system should have rate = 1.0:
+    every FAIL must not have produced a side effect.
+    """
+    from contracts import Outcome
+    fail_results = [r for r in results if r.outcome == Outcome.FAIL]
+    if not fail_results:
+        return 1.0  # no failures occurred - vacuously secure
+    no_side_effect = sum(1 for r in fail_results if not r.side_effect_occurred)
+    return no_side_effect / len(fail_results)
