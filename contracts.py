@@ -46,7 +46,9 @@ class ScenarioInput:
     message:        str
     tool_name:      str
     tool_args:      dict[str, Any]
-    is_adversarial: bool
+    is_adversarial:  bool
+    allowed_tools:   frozenset[str] = frozenset()  # tools permitted in this scenario
+    forbidden_tools: frozenset[str] = frozenset()  # tools that must not be called
 
 
 @dataclass
