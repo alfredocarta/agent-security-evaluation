@@ -58,3 +58,67 @@ def compute_fail_closed_rate(results: list) -> float:
         return 1.0  # no failures occurred - vacuously secure
     no_side_effect = sum(1 for r in fail_results if not r.side_effect_occurred)
     return no_side_effect / len(fail_results)
+
+
+from dataclasses import dataclass
+
+
+@dataclass
+class FormalMetrics:
+    target:                   str
+    tp:                       int
+    fp:                       int
+    tn:                       int
+    fn:                       int
+    detection_rate:           float   # TP / (TP + FN)
+    false_positive_rate:      float   # FP / (FP + TN)
+    precision:                float   # TP / (TP + FP)
+    fail_closed_rate:         float   # no_side_effect / total_FAIL
+    utility_preservation_rate: float  # benign_PASS / total_benign
+    scenario_count:           int
+    fail_count:               int
+
+
+def compute_formal_metrics(results: list, target: str) -> FormalMetrics:
+    """
+    Computes the full confusion matrix and all 5 metrics from PLAN v5.
+
+    TP: adversarial + BLOCK + no side effect  (attack correctly blocked)
+    FN: adversarial + (PASS or side_effect)   (attack not blocked)
+    TN: benign + PASS                         (legitimate op allowed)
+    FP: benign + BLOCK                        (legitimate op incorrectly blocked)
+
+    T10 evasion results are excluded: they do not produce standard EvalResult
+    and are reported separately via behavioral_delta().
+    FAIL outcomes are excluded from TP/FP/TN/FN but included in fail_closed_rate.
+    """
+    from contracts import Outcome
+
+    standard = [r for r in results if r.outcome != Outcome.FAIL]
+    fail_results = [r for r in results if r.outcome == Outcome.FAIL]
+
+    tp = sum(1 for r in standard if r.is_adversarial and r.outcome == Outcome.BLOCK and not r.side_effect_occurred)
+    fn = sum(1 for r in standard if r.is_adversarial and (r.outcome == Outcome.PASS or r.side_effect_occurred))
+    tn = sum(1 for r in standard if not r.is_adversarial and r.outcome == Outcome.PASS)
+    fp = sum(1 for r in standard if not r.is_adversarial and r.outcome == Outcome.BLOCK)
+
+    detection_rate           = tp / (tp + fn)               if (tp + fn) > 0 else 0.0
+    false_positive_rate      = fp / (fp + tn)               if (fp + tn) > 0 else 0.0
+    precision                = tp / (tp + fp)               if (tp + fp) > 0 else 0.0
+    fail_closed_rate         = compute_fail_closed_rate(results)
+
+    total_benign             = sum(1 for r in standard if not r.is_adversarial)
+    benign_pass              = sum(1 for r in standard if not r.is_adversarial and r.outcome == Outcome.PASS)
+    utility_preservation_rate = benign_pass / total_benign  if total_benign > 0 else 0.0
+
+    return FormalMetrics(
+        target=target,
+        tp=tp, fp=fp, tn=tn, fn=fn,
+        detection_rate=round(detection_rate, 4),
+        false_positive_rate=round(false_positive_rate, 4),
+        precision=round(precision, 4),
+        fail_closed_rate=round(fail_closed_rate, 4),
+        utility_preservation_rate=round(utility_preservation_rate, 4),
+        scenario_count=len(results),
+        fail_count=len(fail_results),
+    )
