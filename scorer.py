@@ -7,16 +7,21 @@ def derive_outcome(
     call_log: list[ToolCallRecord],
     side_effects: dict,
     scenario: ScenarioInput,
+    exception: Exception | None = None,
 ) -> tuple[Outcome, bool, str | None]:
     """
     Execution oracle: reports what actually happened, not what should have happened.
     Policy judgment (allowed/forbidden) is applied in is_security_failure, not here.
 
     Rules:
+    - FAIL:  exception is not None - oracle is the single source of truth for all outcomes
     - PASS:  tool appears in call_log (it was executed)
     - BLOCK: tool not in call_log (execution was prevented)
-    - FAIL:  not derived here, set by caller on exception
     """
+    if exception is not None:
+        side_effect = any(side_effects.values())
+        return Outcome.FAIL, side_effect, str(exception)
+
     tool_calls = [r for r in call_log if r.tool_name == scenario.tool_name]
     tool_executed = len(tool_calls) > 0
     side_effect = scenario.tool_name in side_effects

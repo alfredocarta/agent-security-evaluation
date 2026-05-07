@@ -73,13 +73,19 @@ class UnprotectedTarget:
             )
 
         except Exception as exc:
+            outcome, side_effect, rejection = derive_outcome(
+                call_log=self._mock.call_log,
+                side_effects=self._mock._side_effects,
+                scenario=scenario,
+                exception=exc,
+            )
             return EvalResult(
                 scenario_id=scenario.scenario_id,
                 threat=scenario.threat,
                 target=self.name,
                 is_adversarial=scenario.is_adversarial,
-                outcome=Outcome.FAIL,
-                side_effect_occurred=False,
-                rejection_signal=str(exc),
+                outcome=outcome,
+                side_effect_occurred=side_effect,
+                rejection_signal=rejection,
                 execution_log=[f"exception={exc}"],
             )

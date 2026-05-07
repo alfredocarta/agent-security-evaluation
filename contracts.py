@@ -61,6 +61,7 @@ class EvalResult:
     side_effect_occurred: bool
     rejection_signal:     str | None
     execution_log:        list[str] = field(default_factory=list)
+    annotations:          dict      = field(default_factory=dict)
 
 
 class AttestationStatus(Enum):
