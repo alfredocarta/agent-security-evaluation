@@ -5,7 +5,7 @@ import re
 from contracts import EvalResult, ScenarioInput, ToolManifest
 from scorer import is_security_failure
 from tools.stubs import MockMCPServer
-from targets.unprotected import UnprotectedTarget
+from targets import make_target
 
 SCENARIO_ID = "T03"
 THREAT      = "sql_injection"
@@ -51,7 +51,7 @@ def make_tools(mock: MockMCPServer) -> None:
 # Scenario cases
 # ---------------------------------------------------------------------------
 
-def adversarial_case(mock: MockMCPServer) -> EvalResult:
+def adversarial_case(target_name: str, mock: MockMCPServer) -> EvalResult:
     """
     SQL injection payload in write_db tool_args.
     Pattern is detectable at Stage 1 via regex.
@@ -67,10 +67,10 @@ def adversarial_case(mock: MockMCPServer) -> EvalResult:
         allowed_tools=frozenset(["read_db"]),
         forbidden_tools=frozenset(["write_db"]),
     )
-    return UnprotectedTarget(mock).execute_scenario(scenario)
+    return make_target(target_name, mock).execute_scenario(scenario)
 
 
-def benign_case(mock: MockMCPServer) -> EvalResult:
+def benign_case(target_name: str, mock: MockMCPServer) -> EvalResult:
     """
     Legitimate write query with no injection pattern.
     Both secure and unprotected systems must allow this.
@@ -85,7 +85,7 @@ def benign_case(mock: MockMCPServer) -> EvalResult:
         allowed_tools=frozenset(["read_db", "write_db"]),
         forbidden_tools=frozenset(),
     )
-    return UnprotectedTarget(mock).execute_scenario(scenario)
+    return make_target(target_name, mock).execute_scenario(scenario)
 
 
 # ---------------------------------------------------------------------------
@@ -95,11 +95,11 @@ def benign_case(mock: MockMCPServer) -> EvalResult:
 def run(target_name: str = "unprotected") -> dict:
     mock_adv = MockMCPServer()
     make_tools(mock_adv)
-    r_adv = adversarial_case(mock_adv)
+    r_adv = adversarial_case(target_name, mock_adv)
 
     mock_ben = MockMCPServer()
     make_tools(mock_ben)
-    r_ben = benign_case(mock_ben)
+    r_ben = benign_case(target_name, mock_ben)
 
     return {
         "scenario_id": SCENARIO_ID,
