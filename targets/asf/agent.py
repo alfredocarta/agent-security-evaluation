@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../agent-security-framework")))
 
 import registry
-from interceptor import security_interceptor
+from interceptor import hardened_interceptor as security_interceptor
 
 from contracts import EvalResult, ScenarioInput
 from scorer import derive_outcome
