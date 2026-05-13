@@ -22,6 +22,7 @@ def _ensure_agent_registered(allowed_tools: frozenset[str]) -> None:
         risk_level="medium",
         permissions=list(allowed_tools),
     )
+    registry.reinstate_agent(ASF_EVAL_AGENT_ID)
 
 
 def _build_tool_input(scenario: ScenarioInput) -> str:
