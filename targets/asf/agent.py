@@ -46,11 +46,16 @@ class ASFTarget:
         tool_input = _build_tool_input(scenario)
 
         try:
-            verdict, reason = security_interceptor(
+            interceptor_result = security_interceptor(
                 agent_id=ASF_EVAL_AGENT_ID,
                 tool_name=scenario.tool_name,
                 tool_input=tool_input,
             )
+            if len(interceptor_result) == 3:
+                verdict, reason, canary = interceptor_result
+            else:
+                verdict, reason = interceptor_result
+                canary = None
 
             log = [
                 f"scenario={scenario.scenario_id} adversarial={scenario.is_adversarial}",
@@ -61,6 +66,28 @@ class ASFTarget:
                 try:
                     result = self._mock.call_tool(scenario.tool_name, **scenario.tool_args)
                     log.append(f"result={result}")
+                    # Output guard check
+                    from output_guard import check_output
+                    is_dangerous, out_reason = check_output(str(result), canary or "")
+                    if is_dangerous:
+                        log.append(f"output_guard_blocked={out_reason}")
+                        outcome, side_effect, rejection = derive_outcome(
+                            call_log=self._mock.call_log,
+                            side_effects=self._mock._side_effects,
+                            scenario=scenario,
+                            exception=Exception(out_reason),
+                        )
+                        return EvalResult(
+                            scenario_id=scenario.scenario_id,
+                            threat=scenario.threat,
+                            target=self.name,
+                            is_adversarial=scenario.is_adversarial,
+                            outcome=outcome,
+                            side_effect_occurred=side_effect,
+                            rejection_signal=rejection,
+                            execution_log=log,
+                            annotations={"asf_verdict": "OUTPUT_BLOCK", "asf_reason": out_reason},
+                        )
                 except Exception as tool_exc:
                     outcome, side_effect, rejection = derive_outcome(
                         call_log=self._mock.call_log,
