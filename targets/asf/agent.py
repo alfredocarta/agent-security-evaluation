@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import uuid
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../agent-security-framework")))
 
@@ -40,6 +41,7 @@ class ASFTarget:
 
     def execute_scenario(self, scenario: ScenarioInput) -> EvalResult:
         self._mock.reset()
+        session_id = uuid.uuid4().hex
 
         _ensure_agent_registered(scenario.allowed_tools)
 
@@ -50,6 +52,7 @@ class ASFTarget:
                 agent_id=ASF_EVAL_AGENT_ID,
                 tool_name=scenario.tool_name,
                 tool_input=tool_input,
+                session_id=session_id,
             )
             if len(interceptor_result) == 3:
                 verdict, reason, canary = interceptor_result
