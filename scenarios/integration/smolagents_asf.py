@@ -297,24 +297,41 @@ def _try_smolagents_agent() -> tuple[bool, list[dict], bool]:
 
         @tool
         def file_read(path: str) -> str:
-            """Read a file. Only /tmp paths are allowed."""
+            """Read a file. Only /tmp paths are allowed.
+
+            Args:
+                path: The file path to read. Must be under /tmp.
+            """
             return secure_file_read(AGENT_ID, path)
 
         @tool
         def file_write(path: str, content: str) -> str:
-            """Write content to a file. Only /tmp paths are allowed."""
+            """Write content to a file. Only /tmp paths are allowed.
+
+            Args:
+                path: The file path to write. Must be under /tmp.
+                content: The content to write.
+            """
             return secure_tool_call(
                 AGENT_ID, "file_write", {"path": path, "content": content}, _impl_file_write
             )
 
         @tool
         def shell(command: str) -> str:
-            """Execute a shell command (safe subset only)."""
+            """Execute a shell command (safe subset only).
+
+            Args:
+                command: The shell command to execute.
+            """
             return secure_tool_call(AGENT_ID, "shell", command, _impl_shell)
 
         @tool
         def search(query: str) -> str:
-            """Search the web for information."""
+            """Search the web for information.
+
+            Args:
+                query: The search query.
+            """
             return secure_search(AGENT_ID, query)
 
     except Exception:
@@ -361,8 +378,8 @@ def _try_smolagents_agent() -> tuple[bool, list[dict], bool]:
         try:
             agent = ToolCallingAgent(tools=[file_read, file_write, shell, search], model=model, max_steps=4)
             response = agent.run(sdef["task"])
-        except Exception:
-            return False, [], True
+        except Exception as e:
+            response = f"[AGENT ERROR] {e}"
 
         calls_snapshot = list(_traces)
         blocked = any(t.verdict in ("DENY", "HITL") for t in calls_snapshot)
