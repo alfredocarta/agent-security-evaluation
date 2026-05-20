@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from ..db import get_compliance_events, get_recent_events
+from ..db import get_compliance_events, get_recent_events, get_total_event_count
 from ..models import AuditEvent, ComplianceItem
 
 
@@ -19,8 +19,8 @@ ARTICLE_DEFINITIONS = [
     (
         "Art. 12",
         "Record keeping",
-        {"OUTPUT_BLOCK"},
-        "Output blocking evidence is retained in the hash-chained audit trail.",
+        None,  # all events count
+        "All intercepted tool calls are retained in the SHA-256 hash-chained append-only audit trail.",
     ),
     (
         "Art. 14",
@@ -40,9 +40,13 @@ ARTICLE_DEFINITIONS = [
 @router.get("", response_model=list[ComplianceItem])
 async def compliance():
     events = await get_recent_events(limit=10000)
+    total_count = await get_total_event_count()
     items = []
     for article, control, outcomes, description in ARTICLE_DEFINITIONS:
-        count = sum(1 for event in events if event.outcome in outcomes)
+        if outcomes is None:
+            count = total_count
+        else:
+            count = sum(1 for event in events if event.outcome in outcomes)
         items.append(ComplianceItem(
             article=article,
             control=control,

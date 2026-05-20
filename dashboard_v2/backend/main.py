@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .routers import agents, compliance, events, metrics, sessions
+from .routers import agents, compliance, events, hitl, metrics, sessions
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +24,7 @@ app.add_middleware(
 
 app.include_router(agents.router)
 app.include_router(events.router)
+app.include_router(hitl.router)
 app.include_router(sessions.router)
 app.include_router(metrics.router)
 app.include_router(compliance.router)

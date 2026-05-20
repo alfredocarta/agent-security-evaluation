@@ -20,9 +20,11 @@ BLOCK_OUTCOMES = {"BLOCKED", "KILL_SWITCH", "OUTPUT_BLOCK"}
 HITL_OUTCOMES = {"HITL_REQUESTED"}
 TERMINAL_OUTCOMES = ALLOW_OUTCOMES | BLOCK_OUTCOMES | HITL_OUTCOMES
 
-ARTICLE_OUTCOMES: dict[str, set[str]] = {
+_ALL_OUTCOMES = object()  # sentinel: every event counts as evidence
+
+ARTICLE_OUTCOMES: dict[str, Any] = {
     "Art. 9": {"KILL_SWITCH", "BLOCKED"},
-    "Art. 12": {"OUTPUT_BLOCK"},
+    "Art. 12": _ALL_OUTCOMES,   # entire audit trail is Art. 12 evidence
     "Art. 14": {"HITL_REQUESTED"},
     "Art. 15": {"ALLOWED"},
 }
@@ -347,11 +349,37 @@ async def get_agents() -> list[str]:
     return [row[0] for row in rows]
 
 
+async def get_total_event_count() -> int:
+    db_path = get_db_path()
+    if not _has_audit_schema(db_path):
+        return 0
+    async with aiosqlite.connect(db_path) as conn:
+        cursor = await conn.execute("SELECT COUNT(*) FROM audit_trail")
+        row = await cursor.fetchone()
+        return row[0] if row else 0
+
+
 async def get_compliance_events(article_code: str, limit: int = 20) -> list[AuditEvent]:
-    outcomes = ARTICLE_OUTCOMES.get(article_code, set())
-    if not outcomes:
+    outcomes = ARTICLE_OUTCOMES.get(article_code)
+    if outcomes is None:
         return []
     rows = await _fetch_rows()
-    filtered = [row for row in rows if (row.get("outcome") or "") in outcomes]
+    if outcomes is _ALL_OUTCOMES:
+        filtered = list(rows)
+    else:
+        filtered = [row for row in rows if (row.get("outcome") or "") in outcomes]
     filtered.sort(key=lambda r: r.get("timestamp") or "", reverse=True)
     return [_normalize_event(row) for row in filtered[:limit]]
+
+
+async def get_hitl_events() -> list[AuditEvent]:
+    rows = await _fetch_rows()
+    now = datetime.utcnow()
+    cutoff = now - timedelta(hours=24)
+    hitl_rows = [
+        row for row in rows
+        if (row.get("outcome") or "") in HITL_OUTCOMES
+        and (_parse_timestamp(row.get("timestamp")) or datetime.min) >= cutoff
+    ]
+    hitl_rows.sort(key=lambda r: r.get("timestamp") or "", reverse=True)
+    return [_normalize_event(row) for row in hitl_rows]

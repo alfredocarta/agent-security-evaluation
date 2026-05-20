@@ -24,37 +24,100 @@
       </header>
 
       <main class="mx-auto max-w-7xl px-4 py-6 space-y-6">
-        <!-- KPI cards -->
+
+        <!-- ── KPI cards (Fix 1 + Fix 3) ── -->
         <section class="grid grid-cols-1 md:grid-cols-4 gap-4">
+
+          <!-- Fix 3: Tool Calls Monitored -->
           <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <div class="text-sm text-gray-400">Total Events (24h)</div>
+            <div class="text-sm text-gray-400">Tool Calls Monitored (24h)</div>
             <div class="mt-2 text-3xl font-semibold">{{ metrics.events_last_24h ?? 0 }}</div>
-            <div class="mt-1 text-xs text-gray-500">{{ metrics.total_events ?? 0 }} all time</div>
+            <div class="mt-1 text-xs text-gray-500">{{ metrics.total_events ?? 0 }} total since deployment</div>
           </div>
+
+          <!-- Fix 1: Block Rate (renamed from Detection Rate) -->
           <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <div class="text-sm text-gray-400">Detection Rate</div>
-            <div class="mt-2 text-3xl font-semibold">{{ percent(metrics.detection_rate) }}</div>
-            <div class="mt-1 text-xs text-gray-500">Blocked / (blocked + allowed + hitl)</div>
+            <div class="text-sm text-gray-400">Block Rate</div>
+            <div class="mt-2 text-3xl font-semibold" :class="blockRateClass">{{ percent(metrics.detection_rate) }}</div>
+            <div class="mt-1 text-xs text-gray-500">of tool calls blocked by ASF security controls</div>
+            <div class="mt-1 text-xs text-gray-600">Expected range varies by agent type and threat profile</div>
           </div>
+
+          <!-- Fix 3: Security Decisions -->
           <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <div class="text-sm text-gray-400">Blocked / Allowed</div>
+            <div class="text-sm text-gray-400">Security Decisions</div>
             <div class="mt-3 h-3 rounded bg-gray-800 overflow-hidden flex">
               <div class="bg-red-600" :style="{ width: ratioWidth(metrics.blocked_count, metrics.allowed_count, true) }"></div>
               <div class="bg-green-600" :style="{ width: ratioWidth(metrics.blocked_count, metrics.allowed_count, false) }"></div>
             </div>
             <div class="mt-3 flex justify-between text-xs text-gray-400">
-              <span class="text-red-400">{{ metrics.blocked_count ?? 0 }} blocked</span>
-              <span class="text-green-400">{{ metrics.allowed_count ?? 0 }} allowed</span>
+              <span class="text-red-400">{{ metrics.blocked_count ?? 0 }} threats blocked</span>
+              <span class="text-green-400">{{ metrics.allowed_count ?? 0 }} requests authorized</span>
             </div>
           </div>
+
+          <!-- Fix 3: Security Overhead -->
           <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <div class="text-sm text-gray-400">Average Latency</div>
+            <div class="text-sm text-gray-400">Security Overhead</div>
             <div class="mt-2 text-3xl font-semibold">{{ Math.round(metrics.avg_latency_ms ?? 0) }}ms</div>
-            <div class="mt-1 text-xs text-gray-500">p95: {{ Math.round(metrics.p95_latency_ms ?? 0) }}ms</div>
+            <div class="mt-1 text-xs text-gray-500">per tool call inspection · p95: {{ Math.round(metrics.p95_latency_ms ?? 0) }}ms</div>
           </div>
+
         </section>
 
-        <!-- EU AI Act + Timeline -->
+        <!-- ── Fix 5: Before/After ASF comparison ── -->
+        <section class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-semibold text-gray-300">Impact: With ASF vs Without ASF</h2>
+            <span class="text-xs text-gray-600">Baseline assumes unprotected agent with no security controls</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div class="bg-green-900/20 border border-green-800/40 rounded-lg p-3">
+              <div class="text-xs font-semibold text-green-400 mb-2 flex items-center gap-1">
+                <span>✓</span> With ASF (current)
+              </div>
+              <div class="space-y-1.5 text-sm">
+                <div class="flex justify-between">
+                  <span class="text-gray-400">Threats blocked</span>
+                  <span class="text-green-400 font-semibold tabular-nums">{{ metrics.blocked_count ?? 0 }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-400">HITL escalations</span>
+                  <span class="text-yellow-400 font-semibold tabular-nums">{{ metrics.hitl_count ?? 0 }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-400">Avg security overhead</span>
+                  <span class="text-gray-200 font-semibold">+{{ Math.round(metrics.avg_latency_ms ?? 0) }}ms/call</span>
+                </div>
+              </div>
+            </div>
+            <div class="bg-red-900/20 border border-red-800/40 rounded-lg p-3">
+              <div class="text-xs font-semibold text-red-400 mb-2 flex items-center gap-1">
+                <span>✗</span> Without ASF (baseline)
+              </div>
+              <div class="space-y-1.5 text-sm">
+                <div class="flex justify-between">
+                  <span class="text-gray-400">Threats blocked</span>
+                  <span class="text-red-500 font-semibold tabular-nums">0</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-400">HITL escalations</span>
+                  <span class="text-gray-500 font-semibold tabular-nums">0</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-400">Latency overhead</span>
+                  <span class="text-gray-200 font-semibold">0ms</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="text-xs text-gray-600 mt-2">
+            {{ metrics.blocked_count ?? 0 }} additional threats would have reached your agents undetected without ASF.
+            See the unprotected target in the evaluation suite for empirical comparison.
+          </p>
+        </section>
+
+        <!-- ── EU AI Act + Timeline ── -->
         <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div class="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-lg p-4">
             <div class="flex items-center justify-between mb-4">
@@ -98,7 +161,7 @@
                     <tr v-if="expandedArticle === item.article">
                       <td colspan="4" class="bg-gray-950/80 p-0">
                         <div class="p-4 space-y-2">
-                          <div v-if="loadingArticle" class="text-sm text-gray-400">Loading events...</div>
+                          <div v-if="loadingArticle" class="text-sm text-gray-400">Loading events…</div>
                           <div v-else-if="articleEvents.length === 0" class="text-sm text-gray-500">No events found for this article.</div>
                           <div v-for="event in articleEvents" :key="event.event_id" class="border-l-2 pl-3 py-2" :class="borderClass(event)">
                             <div class="flex flex-wrap items-center gap-2">
@@ -108,7 +171,7 @@
                               <span class="px-2 py-0.5 rounded-full text-xs font-medium" :class="stageBadgeClass(event.stage)">{{ event.stage }}</span>
                               <span v-if="event.latency_ms != null" class="text-xs text-gray-500">{{ event.latency_ms }}ms</span>
                             </div>
-                            <div class="mt-1 text-xs text-gray-400 truncate" :title="event.reason">{{ truncate(event.reason, 120) }}</div>
+                            <div class="mt-1 text-xs text-gray-400">{{ truncate(event.reason, 120) }}</div>
                           </div>
                         </div>
                       </td>
@@ -128,7 +191,62 @@
           </div>
         </section>
 
-        <!-- Sessions Timeline -->
+        <!-- ── Fix 4: Human Oversight Queue (Art. 14) ── -->
+        <section class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+          <div class="flex items-center gap-3 mb-4">
+            <h2 class="text-lg font-semibold">Human Oversight Queue</h2>
+            <span class="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">Art. 14</span>
+          </div>
+
+          <!-- Yellow banner: pending requests -->
+          <div
+            v-if="hitlEvents.length > 0"
+            class="flex items-center gap-2 px-4 py-3 rounded-lg bg-yellow-900/30 border border-yellow-700/50 mb-4"
+          >
+            <span class="text-yellow-400 text-lg">⚠</span>
+            <span class="text-yellow-300 font-medium">
+              {{ hitlEvents.length }} request{{ hitlEvents.length === 1 ? '' : 's' }} pending human review in the last 24 hours
+            </span>
+          </div>
+
+          <!-- Green banner: no pending -->
+          <div
+            v-else
+            class="flex items-center gap-2 px-4 py-3 rounded-lg bg-green-900/30 border border-green-700/50 mb-4"
+          >
+            <span class="text-green-400 text-lg">✓</span>
+            <span class="text-green-300 font-medium">No requests pending human review in the last 24 hours</span>
+          </div>
+
+          <!-- Pending events list -->
+          <div v-if="hitlEvents.length > 0" class="space-y-0 divide-y divide-gray-800/60">
+            <div
+              v-for="event in hitlEvents"
+              :key="event.event_id"
+              class="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 py-3 text-sm"
+            >
+              <span class="font-mono text-xs text-gray-400 shrink-0">{{ timeOnly(event.timestamp) }}</span>
+              <span class="text-gray-300 font-medium shrink-0">{{ event.agent_id }}</span>
+              <span class="text-blue-300 shrink-0">{{ event.tool_name || event.action }}</span>
+              <span class="text-gray-400 flex-1 truncate text-xs">{{ truncate(event.reason, 80) }}</span>
+              <div class="flex gap-2 shrink-0">
+                <button
+                  class="px-3 py-1 text-xs rounded bg-green-900/40 text-green-400 border border-green-700/40 cursor-default opacity-50"
+                  title="Read-only — use ASF HITL API to approve"
+                >Approve</button>
+                <button
+                  class="px-3 py-1 text-xs rounded bg-red-900/40 text-red-400 border border-red-700/40 cursor-default opacity-50"
+                  title="Read-only — use ASF HITL API to reject"
+                >Reject</button>
+              </div>
+            </div>
+          </div>
+          <p v-if="hitlEvents.length > 0" class="text-xs text-gray-600 mt-3">
+            Approve / Reject actions are read-only in this dashboard. To act on HITL requests, use the ASF HITL API endpoint.
+          </p>
+        </section>
+
+        <!-- ── Sessions Timeline ── -->
         <section class="bg-gray-900 border border-gray-800 rounded-lg p-4">
           <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
             <div>
@@ -136,7 +254,6 @@
               <p class="text-sm text-gray-400">Sessions are reconstructed from consecutive agent events within 30 seconds.</p>
             </div>
             <div class="flex items-center gap-3">
-              <!-- Agent filter dropdown -->
               <div class="flex items-center gap-2">
                 <label class="text-sm text-gray-400 whitespace-nowrap">Agent:</label>
                 <select
@@ -176,11 +293,30 @@
                     <td class="py-3 text-right text-red-400 tabular-nums">{{ session.blocked_count }}</td>
                     <td class="py-3 text-right text-green-400 tabular-nums">{{ session.allowed_count }}</td>
                   </tr>
+
+                  <!-- Session drill-down (Fix 6 + Fix 7) -->
                   <tr v-if="expandedSession === session.session_id">
                     <td colspan="7" class="bg-gray-950/80 p-0">
                       <div class="p-4 space-y-2">
-                        <div v-if="loadingSession" class="text-sm text-gray-400">Loading session events...</div>
+
+                        <!-- Fix 7: Architectural limitation note -->
+                        <div class="text-xs text-gray-600 italic border-l-2 border-gray-700 pl-3 mb-3">
+                          Showing ASF-intercepted tool calls only. Agent reasoning steps (LLM turns) are not
+                          captured by ASF — ASF operates at the tool call boundary.
+                        </div>
+
+                        <!-- Fix 6: Session-level agent info header -->
+                        <div v-if="expandedSessionInfo" class="text-xs bg-gray-900/60 border border-gray-800 rounded px-3 py-2 mb-3 flex flex-wrap gap-x-3 gap-y-1">
+                          <span class="font-medium text-gray-300">{{ expandedSessionInfo.agentId }}</span>
+                          <span class="text-gray-600">·</span>
+                          <span class="text-gray-400">{{ expandedSessionInfo.framework }}</span>
+                          <span class="text-gray-600">·</span>
+                          <span class="text-gray-400">Agent model: <span class="text-gray-300">{{ expandedSessionInfo.model }}</span></span>
+                        </div>
+
+                        <div v-if="loadingSession" class="text-sm text-gray-400">Loading session events…</div>
                         <div v-else-if="sessionEvents.length === 0" class="text-sm text-gray-500">No events found.</div>
+
                         <div v-for="event in sessionEvents" :key="event.event_id" class="border-l-2 pl-4 py-2" :class="borderClass(event)">
                           <!-- Header row: timestamp | tool | verdict | stage | latency -->
                           <div class="flex flex-wrap items-center gap-2">
@@ -190,25 +326,28 @@
                             <span class="px-2 py-0.5 rounded-full text-xs font-medium" :class="stageBadgeClass(event.stage)">{{ event.stage }}</span>
                             <span v-if="event.latency_ms != null" class="text-xs text-gray-500">{{ event.latency_ms }}ms</span>
                           </div>
-                          <!-- Reason row -->
+                          <!-- Reason -->
                           <div class="mt-1 text-sm text-gray-300">
                             <span class="text-gray-500">Reason:</span>
                             {{ truncate(event.reason, 120) }}
-                            <span v-if="event.reason && event.reason.length > 120" class="text-blue-400 cursor-pointer" @click.stop="expandReason(event.event_id)">
-                              {{ expandedReasons.has(event.event_id) ? ' less' : ' more' }}
-                            </span>
+                            <span
+                              v-if="event.reason && event.reason.length > 120"
+                              class="text-blue-400 cursor-pointer ml-1"
+                              @click.stop="expandReason(event.event_id)"
+                            >{{ expandedReasons.has(event.event_id) ? 'less' : 'more' }}</span>
                           </div>
                           <div v-if="expandedReasons.has(event.event_id)" class="mt-1 text-sm text-gray-300">{{ event.reason }}</div>
-                          <!-- Meta row -->
+                          <!-- Meta row (Fix 6: renamed Security model → ASF security model) -->
                           <div class="mt-1.5 flex flex-wrap gap-3 text-xs text-gray-500">
                             <div v-if="event.eu_ai_act_article">
                               <span class="text-gray-600">EU AI Act:</span>
                               {{ event.eu_ai_act_article }}{{ event.eu_ai_act_control ? ' – ' + event.eu_ai_act_control : '' }}
                             </div>
-                            <div><span class="text-gray-600">Security model:</span> {{ event.security_model || 'not recorded' }}</div>
+                            <div><span class="text-gray-600">ASF security model:</span> {{ event.security_model || 'not recorded' }}</div>
                             <div v-if="event.confidence != null"><span class="text-gray-600">Confidence:</span> {{ (event.confidence * 100).toFixed(0) }}%</div>
                           </div>
                         </div>
+
                       </div>
                     </td>
                   </tr>
@@ -217,6 +356,7 @@
             </table>
           </div>
         </section>
+
       </main>
     </div>
 
@@ -232,6 +372,7 @@
             events: [],
             agents: [],
             selectedAgent: '',
+            hitlEvents: [],
             sessionEvents: [],
             expandedSession: null,
             loadingSession: false,
@@ -242,6 +383,33 @@
             lastRefresh: '',
             chart: null,
           };
+        },
+        computed: {
+          blockRateClass() {
+            const rate = this.metrics.detection_rate || 0;
+            if (rate > 0.8) return 'text-red-400';
+            if (rate < 0.5) return 'text-green-400';
+            return 'text-yellow-400';
+          },
+          expandedSessionInfo() {
+            if (!this.expandedSession) return null;
+            const session = this.sessions.find(s => s.session_id === this.expandedSession);
+            if (!session) return null;
+            const agentId = session.agent_id;
+            if (agentId.includes('smolagents')) {
+              return { agentId, framework: 'ToolCallingAgent (smolagents)', model: 'gemma2:2b via Ollama' };
+            }
+            if (agentId.includes('asf-eval')) {
+              return { agentId, framework: 'LangGraph ReAct', model: 'not recorded' };
+            }
+            if (agentId.includes('openhands')) {
+              return { agentId, framework: 'OpenHands CodeAct', model: 'not recorded' };
+            }
+            if (agentId.includes('pyrit')) {
+              return { agentId, framework: 'PyRIT red-team', model: 'not recorded' };
+            }
+            return { agentId, framework: 'unknown framework', model: 'not recorded' };
+          },
         },
         mounted() {
           this.refresh();
@@ -255,18 +423,20 @@
           },
           async refresh() {
             const agentParam = this.selectedAgent ? `?agent_id=${encodeURIComponent(this.selectedAgent)}` : '';
-            const [metrics, compliance, sessions, events, agents] = await Promise.all([
+            const [metrics, compliance, sessions, events, agents, hitlEvents] = await Promise.all([
               this.fetchJson(`/api/metrics${agentParam}`),
               this.fetchJson('/api/compliance'),
               this.fetchJson(`/api/sessions${agentParam}`),
               this.fetchJson('/api/events?limit=200'),
               this.fetchJson('/api/agents'),
+              this.fetchJson('/api/hitl'),
             ]);
             this.metrics = metrics;
             this.compliance = compliance;
             this.sessions = sessions;
             this.events = events;
             this.agents = agents;
+            this.hitlEvents = hitlEvents;
             this.lastRefresh = new Date().toLocaleTimeString();
             this.renderTimeline();
             if (this.expandedSession) await this.loadSession(this.expandedSession);
@@ -387,7 +557,7 @@
           stageBadgeClass(stage) {
             if (!stage) return 'bg-gray-700/50 text-gray-400';
             const s = stage.toLowerCase();
-            if (s.includes('l1.5') || s === 'l1_5') return 'bg-purple-500/20 text-purple-300 border border-purple-500/30';
+            if (s.includes('l1.5')) return 'bg-purple-500/20 text-purple-300 border border-purple-500/30';
             if (s.includes('stage 2.5') || s.includes('deberta')) return 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30';
             if (s.includes('stage 2')) return 'bg-blue-500/20 text-blue-300 border border-blue-500/30';
             if (s.includes('stage 1')) return 'bg-orange-500/20 text-orange-300 border border-orange-500/30';
@@ -395,14 +565,6 @@
             if (s.includes('output guard')) return 'bg-pink-500/20 text-pink-300 border border-pink-500/30';
             if (s.includes('prompt guard')) return 'bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30';
             return 'bg-gray-700/50 text-gray-400';
-          },
-
-          verdictClass(event) {
-            const value = event.verdict || event.outcome || '';
-            if (value === 'DENY' || value === 'KILL_SWITCH' || event.outcome === 'KILL_SWITCH') return 'text-red-400 font-semibold';
-            if (value === 'ALLOW') return 'text-green-400 font-semibold';
-            if (value === 'HITL') return 'text-yellow-400 font-semibold';
-            return 'text-gray-300 font-semibold';
           },
         },
       }).mount('#app');
