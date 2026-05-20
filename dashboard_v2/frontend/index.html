@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ASF Compliance Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body class="bg-gray-950 text-gray-100">
+    <div id="app" class="min-h-screen">
+      <header class="border-b border-gray-800 bg-gray-950/95 sticky top-0 z-10">
+        <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+          <div>
+            <h1 class="text-xl font-semibold tracking-normal">ASF Compliance Dashboard</h1>
+            <p class="text-sm text-gray-400">SQLite audit trail source of truth · polling every 5s</p>
+          </div>
+          <div class="text-right text-sm text-gray-400">
+            <div>Last refresh</div>
+            <div class="text-gray-100">{{ lastRefresh || 'pending' }}</div>
+          </div>
+        </div>
+      </header>
+
+      <main class="mx-auto max-w-7xl px-4 py-6 space-y-6">
+        <section class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <div class="text-sm text-gray-400">Total Events (24h)</div>
+            <div class="mt-2 text-3xl font-semibold">{{ metrics.events_last_24h ?? 0 }}</div>
+            <div class="mt-1 text-xs text-gray-500">{{ metrics.total_events ?? 0 }} all time</div>
+          </div>
+          <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <div class="text-sm text-gray-400">Detection Rate</div>
+            <div class="mt-2 text-3xl font-semibold">{{ percent(metrics.detection_rate) }}</div>
+            <div class="mt-1 text-xs text-gray-500">Operational block ratio</div>
+          </div>
+          <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <div class="text-sm text-gray-400">Blocked / Allowed</div>
+            <div class="mt-3 h-3 rounded bg-gray-800 overflow-hidden flex">
+              <div class="bg-red-600" :style="{ width: ratioWidth(metrics.blocked_count, metrics.allowed_count, true) }"></div>
+              <div class="bg-green-600" :style="{ width: ratioWidth(metrics.blocked_count, metrics.allowed_count, false) }"></div>
+            </div>
+            <div class="mt-3 flex justify-between text-xs text-gray-400">
+              <span class="text-red-400">{{ metrics.blocked_count ?? 0 }} blocked</span>
+              <span class="text-green-400">{{ metrics.allowed_count ?? 0 }} allowed</span>
+            </div>
+          </div>
+          <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <div class="text-sm text-gray-400">Average Latency</div>
+            <div class="mt-2 text-3xl font-semibold">{{ Math.round(metrics.avg_latency_ms ?? 0) }}ms</div>
+            <div class="mt-1 text-xs text-gray-500">SQLite rows do not include latency metadata</div>
+          </div>
+        </section>
+
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div class="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-semibold">EU AI Act Compliance</h2>
+              <span class="text-xs text-gray-500">Evidence mapped from audit outcomes</span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="text-gray-400 border-b border-gray-800">
+                  <tr>
+                    <th class="py-2 text-left font-medium">Article</th>
+                    <th class="py-2 text-left font-medium">Control</th>
+                    <th class="py-2 text-right font-medium">Events</th>
+                    <th class="py-2 text-right font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in compliance" :key="item.article" class="border-b border-gray-800/70">
+                    <td class="py-3 text-gray-100">{{ item.article }}</td>
+                    <td class="py-3">
+                      <div>{{ item.control }}</div>
+                      <div class="text-xs text-gray-500">{{ item.description }}</div>
+                    </td>
+                    <td class="py-3 text-right tabular-nums">{{ item.event_count }}</td>
+                    <td class="py-3 text-right">
+                      <span class="px-2 py-1 rounded text-xs" :class="item.event_count > 0 ? 'bg-green-900/50 text-green-300' : 'bg-gray-800 text-gray-400'">
+                        {{ item.status }}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-semibold">Historical Timeline</h2>
+              <span class="text-xs text-gray-500">{{ events.length }} recent</span>
+            </div>
+            <canvas id="timelineChart" height="220"></canvas>
+          </div>
+        </section>
+
+        <section class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+            <div>
+              <h2 class="text-lg font-semibold">Sessions Timeline</h2>
+              <p class="text-sm text-gray-400">Sessions are reconstructed from consecutive agent events within 30 seconds.</p>
+            </div>
+            <button @click="refresh" class="self-start md:self-auto px-3 py-2 rounded bg-gray-800 hover:bg-gray-700 text-sm">Refresh</button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="text-gray-400 border-b border-gray-800">
+                <tr>
+                  <th class="py-2 text-left font-medium">Session</th>
+                  <th class="py-2 text-left font-medium">Agent</th>
+                  <th class="py-2 text-left font-medium">Start</th>
+                  <th class="py-2 text-right font-medium">Duration</th>
+                  <th class="py-2 text-right font-medium">Tool Calls</th>
+                  <th class="py-2 text-right font-medium">Blocked</th>
+                  <th class="py-2 text-right font-medium">Allowed</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="session in sessions" :key="session.session_id">
+                  <tr @click="toggleSession(session.session_id)" class="border-b border-gray-800/70 hover:bg-gray-800/50 cursor-pointer">
+                    <td class="py-3 font-mono text-xs">{{ truncate(session.session_id, 28) }}</td>
+                    <td class="py-3">{{ session.agent_id }}</td>
+                    <td class="py-3 text-gray-300">{{ formatTime(session.start_time) }}</td>
+                    <td class="py-3 text-right tabular-nums">{{ session.duration_ms }}ms</td>
+                    <td class="py-3 text-right tabular-nums">{{ session.total_events }}</td>
+                    <td class="py-3 text-right text-red-400 tabular-nums">{{ session.blocked_count }}</td>
+                    <td class="py-3 text-right text-green-400 tabular-nums">{{ session.allowed_count }}</td>
+                  </tr>
+                  <tr v-if="expandedSession === session.session_id">
+                    <td colspan="7" class="bg-gray-950/80 p-0">
+                      <div class="p-4 space-y-3">
+                        <div v-if="loadingSession" class="text-sm text-gray-400">Loading session events...</div>
+                        <div v-for="event in sessionEvents" :key="event.event_id" class="border-l-2 pl-4 py-2" :class="borderClass(event)">
+                          <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-1">
+                            <div class="font-mono text-xs text-gray-400">{{ formatTime(event.timestamp) }}</div>
+                            <div class="text-xs text-gray-500">Hash {{ truncate(event.event_id, 16) }}</div>
+                          </div>
+                          <div class="mt-1 flex flex-wrap items-center gap-2">
+                            <span class="text-sm">TOOL: <span class="text-gray-300">{{ event.tool_name || event.action }}</span></span>
+                            <span class="text-sm">VERDICT: <span :class="verdictClass(event)">{{ event.verdict || event.outcome }}</span></span>
+                            <span class="text-sm">Stage: <span class="text-gray-300">{{ event.stage }}</span></span>
+                            <span class="text-sm text-gray-400">{{ event.latency_ms ?? 0 }}ms</span>
+                          </div>
+                          <div class="mt-2 text-sm text-gray-300">Reason: {{ event.reason }}</div>
+                          <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-gray-500">
+                            <div>EU AI Act: {{ event.eu_ai_act_article || 'n/a' }} {{ event.eu_ai_act_control ? '- ' + event.eu_ai_act_control : '' }}</div>
+                            <div>Agent model: {{ event.agent_model || 'not recorded' }}</div>
+                            <div>Security model: {{ event.security_model || 'not recorded' }}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const { createApp } = Vue;
+
+      createApp({
+        data() {
+          return {
+            metrics: {},
+            compliance: [],
+            sessions: [],
+            events: [],
+            sessionEvents: [],
+            expandedSession: null,
+            loadingSession: false,
+            lastRefresh: '',
+            chart: null,
+          };
+        },
+        mounted() {
+          this.refresh();
+          setInterval(this.refresh, 5000);
+        },
+        methods: {
+          async fetchJson(path) {
+            const response = await fetch(path);
+            if (!response.ok) throw new Error(`${path} ${response.status}`);
+            return await response.json();
+          },
+          async refresh() {
+            const [metrics, compliance, sessions, events] = await Promise.all([
+              this.fetchJson('/api/metrics'),
+              this.fetchJson('/api/compliance'),
+              this.fetchJson('/api/sessions'),
+              this.fetchJson('/api/events?limit=200'),
+            ]);
+            this.metrics = metrics;
+            this.compliance = compliance;
+            this.sessions = sessions;
+            this.events = events;
+            this.lastRefresh = new Date().toLocaleTimeString();
+            this.renderTimeline();
+            if (this.expandedSession) await this.loadSession(this.expandedSession);
+          },
+          async toggleSession(sessionId) {
+            if (this.expandedSession === sessionId) {
+              this.expandedSession = null;
+              this.sessionEvents = [];
+              return;
+            }
+            this.expandedSession = sessionId;
+            await this.loadSession(sessionId);
+          },
+          async loadSession(sessionId) {
+            this.loadingSession = true;
+            try {
+              this.sessionEvents = await this.fetchJson(`/api/sessions/${encodeURIComponent(sessionId)}`);
+            } finally {
+              this.loadingSession = false;
+            }
+          },
+          renderTimeline() {
+            const buckets = {};
+            for (const event of this.events) {
+              const key = (event.timestamp || '').slice(0, 13) || 'unknown';
+              buckets[key] = (buckets[key] || 0) + 1;
+            }
+            const labels = Object.keys(buckets).sort();
+            const data = labels.map((label) => buckets[label]);
+            const ctx = document.getElementById('timelineChart');
+            if (!ctx) return;
+            if (this.chart) this.chart.destroy();
+            this.chart = new Chart(ctx, {
+              type: 'bar',
+              data: {
+                labels,
+                datasets: [{ label: 'Events', data, backgroundColor: '#2563eb' }],
+              },
+              options: {
+                responsive: true,
+                plugins: { legend: { labels: { color: '#d1d5db' } } },
+                scales: {
+                  x: { ticks: { color: '#9ca3af', maxRotation: 0 }, grid: { color: '#1f2937' } },
+                  y: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } },
+                },
+              },
+            });
+          },
+          percent(value) {
+            return `${Math.round((value || 0) * 100)}%`;
+          },
+          ratioWidth(blocked, allowed, blockedPart) {
+            const total = (blocked || 0) + (allowed || 0);
+            if (!total) return blockedPart ? '0%' : '100%';
+            return `${((blockedPart ? blocked : allowed) / total) * 100}%`;
+          },
+          truncate(value, length) {
+            value = value || '';
+            return value.length > length ? `${value.slice(0, length)}...` : value;
+          },
+          formatTime(value) {
+            if (!value) return '';
+            return value.replace('T', ' ').slice(0, 19);
+          },
+          verdictClass(event) {
+            const value = event.verdict || event.outcome || '';
+            if (value === 'DENY' || value === 'KILL_SWITCH' || event.outcome === 'KILL_SWITCH') return 'text-red-400 font-semibold';
+            if (value === 'ALLOW') return 'text-green-400 font-semibold';
+            if (value === 'HITL') return 'text-yellow-400 font-semibold';
+            return 'text-gray-300 font-semibold';
+          },
+          borderClass(event) {
+            const value = event.verdict || event.outcome || '';
+            if (value === 'DENY' || value === 'KILL_SWITCH' || event.outcome === 'KILL_SWITCH') return 'border-red-600';
+            if (value === 'ALLOW') return 'border-green-600';
+            if (value === 'HITL') return 'border-yellow-500';
+            return 'border-gray-700';
+          },
+        },
+      }).mount('#app');
+    </script>
+  </body>
+</html>
