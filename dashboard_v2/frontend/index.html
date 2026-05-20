@@ -431,7 +431,7 @@
             <svg width="15" height="15" viewBox="0 0 15 15" fill="currentColor" style="flex-shrink:0;opacity:.75">
               <path d="M7.5 1a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM2 9.5a5.5 5.5 0 0111 0V11H2V9.5zM1 12h13v2H1v-2z"/>
             </svg>
-            HITL Queue
+            Human Oversight
             <span v-if="hitlEvents.length > 0" class="nav-badge">{{ hitlEvents.length }}</span>
           </a>
 
@@ -481,19 +481,23 @@
               <!-- Fix 3 + Fix 4: KPI cards grid -->
               <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" style="margin-bottom:20px;">
 
-                <!-- Tool Calls Monitored -->
+                <!-- Tool Calls Inspected -->
                 <div class="card">
-                  <div class="kpi-label">Tool Calls Monitored (24h)</div>
-                  <div class="kpi-value c-primary">{{ fmtNum(metrics.events_last_24h) }}</div>
-                  <div class="kpi-sub">{{ fmtNum(metrics.total_events) }} total since deployment</div>
-                  <div class="kpi-trend" :class="callsTrend.cls">{{ callsTrend.label }}</div>
+                  <div class="kpi-label">Tool Calls Inspected (24h)</div>
+                  <div class="kpi-value c-primary">{{ fmtNum(metrics.tool_calls_last_24h) }}</div>
+                  <div class="kpi-sub">{{ fmtNum(metrics.total_tool_calls) }} total since deployment</div>
+                  <div v-if="metrics.calls_trend_pct != null" class="kpi-trend"
+                       :class="metrics.calls_trend_pct > 20 ? 'up' : metrics.calls_trend_pct < -20 ? 'down' : 'neutral'">
+                    {{ metrics.calls_trend_pct > 0 ? '↑' : '↓' }} {{ Math.abs(Math.round(metrics.calls_trend_pct)) }}% vs daily avg
+                  </div>
+                  <div v-else class="kpi-trend neutral">— single-day dataset, no trend</div>
                 </div>
 
                 <!-- Block Rate -->
                 <div class="card">
                   <div class="kpi-label">Block Rate</div>
                   <div class="kpi-value" :style="blockRateStyle">{{ percent(metrics.detection_rate) }}</div>
-                  <div class="kpi-sub">of tool calls blocked by ASF controls</div>
+                  <div class="kpi-sub">of <em>terminal</em> security decisions were blocks</div>
                   <div class="kpi-trend neutral">Expected varies by agent / threat profile</div>
                 </div>
 
@@ -514,11 +518,20 @@
                 <div class="card">
                   <div class="kpi-label">Security Overhead</div>
                   <div class="kpi-value c-primary">
-                    {{ Math.round(metrics.avg_latency_ms ?? 0) }}<span style="font-size:1.2rem;font-weight:400;color:var(--text-muted);">ms</span>
+                    {{ fmtLatency(metrics.avg_latency_ms) }}<span style="font-size:1.2rem;font-weight:400;color:var(--text-muted);">ms</span>
                   </div>
                   <div class="kpi-sub">per tool call inspection</div>
-                  <div class="kpi-trend neutral">p95: {{ Math.round(metrics.p95_latency_ms ?? 0) }}ms</div>
+                  <div class="kpi-trend neutral">p95: {{ metrics.p95_latency_ms ? Math.round(metrics.p95_latency_ms) + 'ms' : '—' }}</div>
                 </div>
+              </div>
+
+              <!-- Activity Timeline chart -->
+              <div class="card" style="padding:20px;margin-bottom:20px;">
+                <div class="section-hdr">
+                  <span class="section-title">Activity Timeline</span>
+                  <span class="section-sub">Events per hour (last 200 intercepted)</span>
+                </div>
+                <canvas id="timelineChart" height="80"></canvas>
               </div>
 
               <!-- Fix 5: Before/After comparison -->
@@ -601,10 +614,11 @@
                         <td>
                           <div style="font-weight:500;">{{ item.control }}</div>
                           <div class="c-muted" style="font-size:0.75rem;margin-top:1px;">{{ item.description }}</div>
+                          <div v-if="item.note" class="c-muted" style="font-size:0.7rem;margin-top:2px;font-style:italic;">{{ item.note }}</div>
                         </td>
                         <td class="r td-mono">{{ item.event_count.toLocaleString() }}</td>
                         <td class="r">
-                          <span :class="item.event_count > 0 ? 'badge badge-allow' : 'badge badge-neutral'">
+                          <span :class="item.event_count > 0 ? 'badge badge-allow' : item.status.startsWith('Configured') ? 'badge badge-neutral' : 'badge badge-neutral'">
                             {{ item.status }}
                           </span>
                         </td>
@@ -673,16 +687,13 @@
                         <td class="c-muted" style="font-size:0.8125rem;max-width:240px;">{{ truncate(ev.reason, 55) }}</td>
                         <td><span :class="stageBadgeClass(ev.stage)">{{ ev.stage }}</span></td>
                         <td class="r">
-                          <div style="display:inline-flex;gap:6px;">
-                            <button class="badge badge-allow" style="cursor:default;opacity:.5;" title="Use ASF HITL API to approve">Approve</button>
-                            <button class="badge badge-deny"  style="cursor:default;opacity:.5;" title="Use ASF HITL API to reject">Reject</button>
-                          </div>
+                          <span class="badge badge-hitl" style="white-space:nowrap;">Pending review</span>
                         </td>
                       </tr>
                     </tbody>
                   </table>
                   <p class="c-muted" style="font-size:0.75rem;margin-top:12px;">
-                    Approve / Reject are read-only in this dashboard. Use the ASF HITL API endpoint to act on pending requests.
+                    To approve or reject: <span class="mono" style="font-size:0.75rem;">POST /api/hitl/{event_id}/approve</span> or <span class="mono" style="font-size:0.75rem;">/reject</span> on the ASF HITL API.
                   </p>
                 </div>
               </div>
@@ -732,8 +743,8 @@
                         <td class="td-mono">{{ formatTime(session.start_time) }}</td>
                         <td class="r td-mono">{{ session.duration_ms.toLocaleString() }}ms</td>
                         <td class="r td-mono">{{ session.total_events }}</td>
-                        <td class="r mono c-danger">{{ session.blocked_count || '–' }}</td>
-                        <td class="r mono c-success">{{ session.allowed_count || '–' }}</td>
+                        <td class="r mono c-danger">{{ session.blocked_count ?? '–' }}</td>
+                        <td class="r mono c-success">{{ session.allowed_count ?? '–' }}</td>
                       </tr>
 
                       <!-- Session drill-down -->
@@ -836,15 +847,6 @@
             if (r > 0.8) return 'color:var(--danger)';
             if (r < 0.5) return 'color:var(--success)';
             return 'color:var(--warning)';
-          },
-          callsTrend() {
-            const total   = this.metrics.total_events    || 1;
-            const last24h = this.metrics.events_last_24h || 0;
-            const avgDay  = total / 30;
-            const ratio   = last24h / (avgDay || 1);
-            if (ratio > 1.2) return { label: `↑ ${Math.round((ratio - 1) * 100)}% above daily avg`, cls: 'up' };
-            if (ratio < 0.8) return { label: `↓ ${Math.round((1 - ratio) * 100)}% below daily avg`, cls: 'down' };
-            return { label: '→ near daily average', cls: 'neutral' };
           },
           expandedSessionInfo() {
             if (!this.expandedSession) return null;
@@ -984,6 +986,7 @@
           /* ── Formatting ── */
           fmtNum(v)   { return (v ?? 0).toLocaleString(); },
           percent(v)  { return `${Math.round((v || 0) * 100)}%`; },
+          fmtLatency(ms) { return (!ms || ms === 0) ? '< 1' : String(Math.round(ms)); },
           ratioWidth(blocked, allowed, isBlocked) {
             const t = (blocked || 0) + (allowed || 0);
             if (!t) return isBlocked ? '0%' : '100%';

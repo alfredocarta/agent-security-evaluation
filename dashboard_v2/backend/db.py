@@ -227,7 +227,7 @@ def _normalize_event(row: dict[str, Any]) -> AuditEvent:
         tool_name=row.get("action") or None,
         stage=_extract_stage(outcome, reason),
         verdict=_infer_verdict(outcome),
-        agent_model="not recorded in SQLite audit trail",
+        agent_model=None,
         security_model=_infer_security_model(outcome, reason),
         prev_hash=row.get("prev_hash"),
     )
@@ -302,13 +302,16 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
     if agent_id:
         rows = [row for row in rows if row.get("agent_id") == agent_id]
 
+    # Count unique tool-call interceptions — one per trace_id, not one per pipeline row
+    total_tool_calls = len(set(row.get("trace_id") for row in rows if row.get("trace_id")))
+
     terminal_rows = [row for row in rows if (row.get("outcome") or "") in TERMINAL_OUTCOMES]
     blocked = sum(1 for row in terminal_rows if (row.get("outcome") or "") in BLOCK_OUTCOMES)
     allowed = sum(1 for row in terminal_rows if (row.get("outcome") or "") in ALLOW_OUTCOMES)
     hitl = sum(1 for row in terminal_rows if (row.get("outcome") or "") in HITL_OUTCOMES)
     terminal = blocked + allowed + hitl
 
-    latencies = [row["latency_ms"] for row in rows if row.get("latency_ms") is not None]
+    latencies = [row["latency_ms"] for row in terminal_rows if row.get("latency_ms") is not None]
     avg_latency_ms = sum(latencies) / len(latencies) if latencies else 0.0
     p95_latency_ms = 0.0
     if latencies:
@@ -318,13 +321,28 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
 
     now = datetime.utcnow()
     cutoff = now - timedelta(hours=24)
-    last_24h = sum(
-        1 for row in rows
-        if (_parse_timestamp(row.get("timestamp")) or datetime.min) >= cutoff
-    )
+    # Count unique traces seen in last 24 h (not raw rows)
+    tool_calls_last_24h = len(set(
+        row.get("trace_id") for row in rows
+        if row.get("trace_id")
+        and (_parse_timestamp(row.get("timestamp")) or datetime.min) >= cutoff
+    ))
+
+    # Dataset age — needed to compute a meaningful trend
+    timestamps = [
+        ts for ts in (_parse_timestamp(row.get("timestamp")) for row in rows)
+        if ts is not None
+    ]
+    calls_trend_pct: float | None = None
+    if timestamps and total_tool_calls > 0:
+        dataset_days = max(1, (now - min(timestamps)).days)
+        if dataset_days > 1:
+            daily_avg = total_tool_calls / dataset_days
+            if daily_avg > 0:
+                calls_trend_pct = round((tool_calls_last_24h - daily_avg) / daily_avg * 100, 1)
 
     return KPIMetrics(
-        total_events=len(rows),
+        total_tool_calls=total_tool_calls,
         detection_rate=(blocked / terminal) if terminal else 0.0,
         false_positive_rate=0.0,
         blocked_count=blocked,
@@ -332,7 +350,8 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
         hitl_count=hitl,
         avg_latency_ms=round(avg_latency_ms, 1),
         p95_latency_ms=round(p95_latency_ms, 1),
-        events_last_24h=last_24h,
+        tool_calls_last_24h=tool_calls_last_24h,
+        calls_trend_pct=calls_trend_pct,
     )
 
 
@@ -357,6 +376,12 @@ async def get_total_event_count() -> int:
         cursor = await conn.execute("SELECT COUNT(*) FROM audit_trail")
         row = await cursor.fetchone()
         return row[0] if row else 0
+
+
+async def get_total_trace_count() -> int:
+    """Count distinct intercepted tool calls (one per trace_id, not one per pipeline row)."""
+    rows = await _fetch_rows()
+    return len(set(row.get("trace_id") for row in rows if row.get("trace_id")))
 
 
 async def get_compliance_events(article_code: str, limit: int = 20) -> list[AuditEvent]:

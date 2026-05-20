@@ -37,7 +37,7 @@ class SessionSummary(BaseModel):
 
 
 class KPIMetrics(BaseModel):
-    total_events: int
+    total_tool_calls: int
     detection_rate: float
     false_positive_rate: float
     blocked_count: int
@@ -45,7 +45,8 @@ class KPIMetrics(BaseModel):
     hitl_count: int
     avg_latency_ms: float
     p95_latency_ms: float = 0.0
-    events_last_24h: int
+    tool_calls_last_24h: int
+    calls_trend_pct: float | None = None
 
 
 class ComplianceItem(BaseModel):
@@ -54,3 +55,4 @@ class ComplianceItem(BaseModel):
     event_count: int
     description: str
     status: str
+    note: str | None = None

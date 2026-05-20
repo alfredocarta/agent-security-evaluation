@@ -8,8 +8,8 @@ def test_metrics():
     assert r.status_code == 200
     d = r.json()
     assert "detection_rate" in d
-    assert "total_events" in d
-    print(f"Metrics: {d['total_events']} events, dr={d['detection_rate']}")
+    assert "total_tool_calls" in d
+    print(f"Metrics: {d['total_tool_calls']} tool calls, dr={d['detection_rate']}")
 
 
 def test_sessions():
