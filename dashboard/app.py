@@ -132,28 +132,62 @@ if PAGE == "📊 Overview":
     st.title("🛡️ ASF Security Dashboard – Overview")
     st.caption(
         "Real-time view of all security events intercepted by the Agent Security Framework. "
-        "Data is sourced from the ASF SQLite audit trail."
+        "Audit counts are sourced from the ASF SQLite trail. "
+        "Formal evaluation metrics require running the evaluation suite (see Diagnostics)."
     )
 
-    # ── KPI cards ─────────────────────────────────────────────────────────────
+    # ── Row 1: Audit event counts ──────────────────────────────────────────────
+    st.subheader("Audit Trail Counts")
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("Total Events",    f"{kpis['total_events']:,}")
-    c2.metric("Sessions",        f"{kpis['total_sessions']:,}")
-    c3.metric("ALLOW",           f"{kpis['allow_count']:,}")
-    c4.metric("DENY / KILL",     f"{kpis['deny_count']:,}")
-    c5.metric("HITL",            f"{kpis['hitl_count']:,}")
-    c6.metric("Frameworks Tested",f"{kpis['frameworks_tested']}")
+    c1.metric("Total Events",      f"{kpis['total_events']:,}")
+    c2.metric("Sessions (est.)",   f"{kpis['total_sessions']:,}")
+    c3.metric("ALLOW",             f"{kpis['allow_count']:,}")
+    c4.metric("DENY / KILL",       f"{kpis['deny_count']:,}")
+    c5.metric("HITL",              f"{kpis['hitl_count']:,}")
+    c6.metric("Frameworks Tested", f"{kpis['frameworks_tested']}")
+
+    # Secondary operational metric: audit_block_ratio (NOT a formal detection rate)
+    abr = kpis.get("audit_block_ratio")
+    st.caption(
+        f"**Audit block ratio** (DENY+KILL / all terminal events): "
+        f"{'**' + _fmt(abr, '.4f') + '**' if abr is not None else 'N/A'}  \n"
+        "This is an *operational* count ratio across all traffic (adversarial + benign combined). "
+        "It is not equivalent to a formal detection rate."
+    )
 
     st.divider()
 
-    c7, c8, c9, c10, c11, c12, c13 = st.columns(7)
-    c7.metric("Detection Rate",       _fmt(kpis["detection_rate"]))
-    c8.metric("FP Rate",              _fmt(kpis["false_positive_rate"]))
-    c9.metric("Precision",            _fmt(kpis["precision"]))
-    c10.metric("Fail-Closed Rate",    _fmt(kpis["fail_closed_rate"]))
-    c11.metric("Utility Preserv.",    _fmt(kpis["utility_preservation_rate"]))
-    c12.metric("Avg Latency (ms)",    _fmt(kpis["avg_latency_ms"], ".1f"))
-    c13.metric("P95 Latency (ms)",    _fmt(kpis["p95_latency_ms"], ".1f"))
+    # ── Row 2: Formal evaluation metrics ──────────────────────────────────────
+    st.subheader("Formal Evaluation Metrics")
+    if kpis.get("formal_metrics_loaded"):
+        conf_row = st.columns(5)
+        conf_row[0].metric("Detection Rate",     _fmt(kpis["detection_rate"]))
+        conf_row[1].metric("FP Rate",            _fmt(kpis["false_positive_rate"]))
+        conf_row[2].metric("Precision",          _fmt(kpis["precision"]))
+        conf_row[3].metric("Fail-Closed Rate",   _fmt(kpis["fail_closed_rate"]))
+        conf_row[4].metric("Utility Preserv.",   _fmt(kpis["utility_preservation_rate"]))
+
+        cm_cols = st.columns(4)
+        cm_cols[0].metric("TP", str(kpis.get("tp", "–")))
+        cm_cols[1].metric("FP", str(kpis.get("fp", "–")))
+        cm_cols[2].metric("TN", str(kpis.get("tn", "–")))
+        cm_cols[3].metric("FN", str(kpis.get("fn", "–")))
+        st.caption(
+            "Source: `python -m suite --target asf`  \n"
+            "TP = adversarial blocked correctly, FP = benign blocked incorrectly, "
+            "TN = benign allowed correctly, FN = adversarial not blocked."
+        )
+    else:
+        st.warning(
+            "Formal evaluation metrics not loaded.  \n"
+            "Go to **🛠️ Raw Data / Diagnostics → Run All Evaluation Scenarios** to load them, "
+            "or run: `conda run -n eval-framework python -m suite --target asf`"
+        )
+        st.caption(
+            "Formal metrics (detection_rate, FP rate, precision, fail_closed_rate, "
+            "utility_preservation_rate) come from the evaluation suite and are never "
+            "approximated from audit-trail proportions."
+        )
 
     st.divider()
 
@@ -164,7 +198,6 @@ if PAGE == "📊 Overview":
         st.subheader("Verdict Distribution")
         vd = verdict_distribution(df)
         if not vd.empty:
-            colors = [VERDICT_COLORS.get(o, "#6c757d") for o in vd["outcome"]]
             fig = px.pie(
                 vd,
                 values="count",
@@ -188,28 +221,6 @@ if PAGE == "📊 Overview":
             st.plotly_chart(fig2, use_container_width=True)
         else:
             st.info("Insufficient time-series data.")
-
-    # ── Latency by stage ──────────────────────────────────────────────────────
-    st.subheader("Approx. Latency by Pipeline Stage")
-    lbs = latency_by_stage(df)
-    if not lbs.empty:
-        fig3 = px.bar(
-            lbs,
-            x="stage",
-            y="avg_ms",
-            error_y=lbs["p95_ms"] - lbs["avg_ms"],
-            labels={"avg_ms": "Avg latency (ms)", "stage": ""},
-            color="avg_ms",
-            color_continuous_scale="Blues",
-        )
-        fig3.update_layout(height=320, margin=dict(t=10, b=10), coloraxis_showscale=False)
-        st.plotly_chart(fig3, use_container_width=True)
-        st.caption(
-            "Latency is approximated from timestamp deltas between consecutive audit events "
-            "within a session. Stage 2.5 (DeBERTa) may show a cold-start spike on first invocation."
-        )
-    else:
-        st.info("Not enough data to compute per-stage latency.")
 
     # ── Latest events table ───────────────────────────────────────────────────
     st.subheader("Latest Security Events")
@@ -235,11 +246,15 @@ if PAGE == "📊 Overview":
 
 elif PAGE == "🔄 Session Reconstruction":
     st.title("🔄 Session Reconstruction")
-    st.info(
-        "**Note:** The ASF audit trail does not include a `session_id` field in its schema. "
-        "Sessions are reconstructed by grouping consecutive events from the same agent "
-        "within 30-second windows. This is a best-effort approximation. "
-        "Live session tracking requires Langfuse integration ([localhost:3000](http://localhost:3000))."
+    st.warning(
+        "**Schema limitation – no `session_id` column.**  \n"
+        "The ASF SQLite `audit_trail` table does not include a `session_id` field. "
+        "Sessions below are reconstructed by grouping consecutive events from the same "
+        "`agent_id` within 30-second timestamp windows.  \n"
+        "This approximation is useful for exploration and demo purposes, "
+        "but is **not suitable for forensic analysis**. "
+        "True session correlation requires either a `session_id` added to the interceptor, "
+        "or live Langfuse tracing at [localhost:3000](http://localhost:3000)."
     )
 
     sessions = list_sessions(df)
@@ -421,21 +436,34 @@ elif PAGE == "🤖 Model & Stage Performance":
     else:
         st.info("No data.")
 
-    # ── Latency table ─────────────────────────────────────────────────────────
-    st.subheader("Approx. Latency by Stage")
+    # ── Estimated event-gap by stage ──────────────────────────────────────────
+    st.subheader("Estimated Inter-Event Gap by Stage")
+    st.caption(
+        "**Important:** Historical SQLite audit rows do not contain an explicit `latency_ms` field. "
+        "Values below are computed from timestamp deltas between consecutive audit events within a "
+        "reconstructed session. They reflect wall-clock gaps (including I/O, scheduling, and "
+        "evaluation harness overhead), not pure stage processing time. "
+        "True per-stage latency is available only via enriched Langfuse metadata or "
+        "newer structured audit events that carry an explicit `latency_ms` column."
+    )
     lbs = latency_by_stage(df)
     if not lbs.empty:
         st.dataframe(
-            lbs.rename(columns={"stage": "Stage", "avg_ms": "Avg (ms)", "p95_ms": "P95 (ms)", "count": "Samples"}),
+            lbs.rename(columns={
+                "stage":           "Stage",
+                "est_gap_avg_ms":  "Est. Avg Gap (ms)",
+                "est_gap_p95_ms":  "Est. P95 Gap (ms)",
+                "count":           "Samples",
+            }),
             use_container_width=True,
             hide_index=True,
         )
         st.info(
             "**Stage 2.5 (DeBERTa) cold-start note:** The first invocation loads the model into memory "
-            "and can be 1–5× slower than subsequent calls. Warm latency is typically under 100ms."
+            "and can be 1–5× slower than subsequent calls. Warm processing time is typically under 100ms."
         )
     else:
-        st.info("Not enough session data for latency breakdown.")
+        st.info("Not enough session data for inter-event gap breakdown.")
 
     # stage3 invocations
     stage3_count = int(df["outcome"].isin({"STAGE_3_START", "STAGE_3_DOUBLE_CHECK"}).sum())
@@ -625,13 +653,35 @@ elif PAGE == "📋 Evaluation Coverage":
 elif PAGE == "🛠️ Raw Data / Diagnostics":
     st.title("🛠️ Raw Data & Diagnostics")
 
-    # ── System info ───────────────────────────────────────────────────────────
-    st.subheader("Data Source Status")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Database path",  str(DB_PATH))
+    # ── Structured capability panel ───────────────────────────────────────────
+    st.subheader("Data Source & Schema Capabilities")
+
     db_found = Path(str(DB_PATH)).exists()
-    c2.metric("DB found",       "✅ Yes" if db_found else "❌ No")
-    c3.metric("Audit rows",     f"{len(df):,}")
+    formal_loaded = bool(
+        st.session_state.get("live_evals", {}).get("suite_asf", {}).get("metrics")
+    )
+
+    status_rows = [
+        {"Capability":          "ASF SQLite found",
+         "Status":              "✅ Yes" if db_found else "❌ No",
+         "Detail":              str(DB_PATH)},
+        {"Capability":          "Audit rows loaded",
+         "Status":              f"{len(df):,}",
+         "Detail":              "From `audit_trail` table"},
+        {"Capability":          "`session_id` column in schema",
+         "Status":              "❌ No",
+         "Detail":              "Sessions are reconstructed by agent_id + timestamp proximity (best-effort)"},
+        {"Capability":          "`latency_ms` column in schema",
+         "Status":              "❌ No",
+         "Detail":              "Stage gaps are estimated from audit timestamp deltas, not instrumented latency"},
+        {"Capability":          "Formal suite metrics loaded",
+         "Status":              "✅ Yes" if formal_loaded else "⚠️ No – run evaluation below",
+         "Detail":              "`python -m suite --target asf`"},
+        {"Capability":          "Langfuse live API",
+         "Status":              "ℹ️ Not connected / not required",
+         "Detail":              "Self-hosted at localhost:3000; dashboard links there but does not depend on it"},
+    ]
+    st.dataframe(pd.DataFrame(status_rows), use_container_width=True, hide_index=True)
 
     # ── Errors ────────────────────────────────────────────────────────────────
     if ERRORS:
@@ -641,30 +691,58 @@ elif PAGE == "🛠️ Raw Data / Diagnostics":
     else:
         st.success("No errors during data collection.")
 
+    st.divider()
+
     # ── Run evaluations on-demand ─────────────────────────────────────────────
-    st.subheader("On-Demand Evaluation Run")
+    st.subheader("Run Evaluation Scenarios")
     st.caption(
-        "Running evaluation commands can take several minutes. "
-        "Results are used only in the current session and are not persisted."
+        "Running evaluation commands can take several minutes and requires ASF services "
+        "(Ollama, LM Studio) to be active. "
+        "Results are stored in session state and used by the Overview formal metrics panel."
     )
-    if st.button("▶ Run All Evaluation Scenarios"):
-        with st.spinner("Running scenario commands…"):
-            from dashboard.data_loader import collect_evaluation_results
-            live_evals = collect_evaluation_results()
+
+    col_run, col_suite = st.columns([1, 2])
+    with col_run:
+        run_suite_only = st.button("▶ Run Suite Only (fast)")
+        run_all        = st.button("▶ Run All Scenarios (slow)")
+
+    with col_suite:
+        st.caption(
+            "**Suite only:** `python -m suite --target asf` — runs T01-T09, ~30 s  \n"
+            "**All scenarios:** runs suite + integration + PyRIT + Garak, ~5–15 min"
+        )
+
+    if run_suite_only or run_all:
+        from dashboard.data_loader import run_json_command, _conda_cmd, collect_evaluation_results
+
+        if run_suite_only:
+            with st.spinner("Running suite…"):
+                result = run_json_command(_conda_cmd("suite", "--target", "asf"))
+            live_evals = {"suite_asf": result} if result else {}
+        else:
+            with st.spinner("Running all evaluation scenarios…"):
+                live_evals = collect_evaluation_results()
+
         st.session_state["live_evals"] = live_evals
-        st.success(f"Completed. {len(live_evals)} scenario(s) returned JSON.")
+        n = sum(1 for v in live_evals.values() if v is not None)
+        st.success(f"Done — {n} scenario(s) returned JSON.")
         for k, v in live_evals.items():
             with st.expander(f"Result: {k}"):
                 st.json(v)
 
-    if "live_evals" in st.session_state and st.session_state["live_evals"]:
-        st.info("Evaluation results are loaded in this session. Navigate to Overview to see updated KPIs.")
+    if st.session_state.get("live_evals"):
+        st.info(
+            "Evaluation results are stored in this session. "
+            "Navigate to **📊 Overview** to see updated formal metrics. "
+            "Note: Streamlit's cache means you may need to reload the page once after running."
+        )
+
+    st.divider()
 
     # ── Raw audit preview ─────────────────────────────────────────────────────
     st.subheader("Raw Audit Trail Preview")
     if not df.empty:
         show = df.head(200).copy()
-        # redact reason for display (already done, but belt-and-suspenders)
         if "reason" in show.columns:
             show["reason"] = show["reason"].apply(redact)
         st.dataframe(show, use_container_width=True, hide_index=True)
@@ -684,6 +762,6 @@ elif PAGE == "🛠️ Raw Data / Diagnostics":
     st.markdown(
         "Langfuse is self-hosted at **[localhost:3000](http://localhost:3000)**. "
         "The dashboard does not require live Langfuse API access. "
-        "If Langfuse is running, session traces with full LLM input/output are available there. "
-        "ASF emits traces via `LANGFUSE_HOST` environment variable when configured."
+        "If Langfuse is running, full session traces with LLM input/output are available there. "
+        "ASF emits traces via the `LANGFUSE_HOST` environment variable when configured."
     )

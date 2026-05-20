@@ -30,41 +30,59 @@ def compute_kpis(df: pd.DataFrame, eval_results: dict) -> dict:
     """
     Compute all dashboard KPI values from the audit trail and eval results.
     Returns a flat dict of metric_name -> value.
+
+    Naming conventions:
+    - Formal metrics (detection_rate, fp_rate, …) come exclusively from the
+      evaluation suite JSON.  They are None when the suite has not been run.
+    - audit_block_ratio is an operational count derived from the audit trail.
+      It is NOT a detection rate (it does not distinguish adversarial from benign).
+    - Timestamp-derived duration estimates are named est_session_duration_* to
+      avoid confusion with instrumented per-stage latency.
     """
     kpis: dict = {}
 
     kpis["total_events"]   = len(df)
     kpis["total_sessions"] = df["session_key"].nunique() if "session_key" in df.columns else 0
 
-    terminal = terminal_events(df)
     kpis["allow_count"] = int(df["outcome"].isin(ALLOW_OUTCOMES).sum())
     kpis["deny_count"]  = int(df["outcome"].isin(DENY_OUTCOMES).sum())
     kpis["hitl_count"]  = int(df["outcome"].isin(HITL_OUTCOMES).sum())
 
-    # detection / FP metrics: use suite_asf JSON if available
-    suite = eval_results.get("suite_asf", {})
+    # Operational ratio: blocked / total terminal  (NOT a formal detection rate)
+    total_terminal = kpis["allow_count"] + kpis["deny_count"] + kpis["hitl_count"]
+    kpis["audit_block_ratio"] = (
+        round(kpis["deny_count"] / total_terminal, 4) if total_terminal > 0 else None
+    )
+
+    # ── Formal metrics – come only from evaluation suite JSON ─────────────────
+    # Never fall back to audit-derived proportions; show None → "N/A" in UI.
+    suite   = eval_results.get("suite_asf", {})
     metrics = suite.get("metrics", {})
-    kpis["detection_rate"]           = metrics.get("detection_rate",            None)
-    kpis["false_positive_rate"]      = metrics.get("false_positive_rate",       None)
-    kpis["precision"]                = metrics.get("precision",                 None)
-    kpis["fail_closed_rate"]         = metrics.get("fail_closed_rate",          None)
-    kpis["utility_preservation_rate"]= metrics.get("utility_preservation_rate", None)
+    kpis["detection_rate"]            = metrics.get("detection_rate",            None)
+    kpis["false_positive_rate"]       = metrics.get("false_positive_rate",       None)
+    kpis["precision"]                 = metrics.get("precision",                 None)
+    kpis["fail_closed_rate"]          = metrics.get("fail_closed_rate",          None)
+    kpis["utility_preservation_rate"] = metrics.get("utility_preservation_rate", None)
+    kpis["tp"]                        = metrics.get("tp",                        None)
+    kpis["fp"]                        = metrics.get("fp",                        None)
+    kpis["tn"]                        = metrics.get("tn",                        None)
+    kpis["fn"]                        = metrics.get("fn",                        None)
+    kpis["formal_metrics_loaded"]     = bool(metrics)
 
-    # fallback: estimate from audit trail
-    if kpis["detection_rate"] is None and (kpis["allow_count"] + kpis["deny_count"]) > 0:
-        total_terminal = kpis["allow_count"] + kpis["deny_count"] + kpis["hitl_count"]
-        if total_terminal > 0:
-            kpis["detection_rate"] = round(kpis["deny_count"] / total_terminal, 4)
+    # ── Session duration estimates (timestamp deltas, NOT instrumented latency) ─
+    # These are named clearly to avoid being mistaken for per-stage latency.
+    kpis["est_session_duration_avg_ms"] = None
+    kpis["est_session_duration_p95_ms"] = None
+    dur_series = _compute_session_latencies(df)
+    if dur_series is not None and len(dur_series) > 0:
+        kpis["est_session_duration_avg_ms"] = round(float(dur_series.mean()), 1)
+        kpis["est_session_duration_p95_ms"] = round(float(np.percentile(dur_series, 95)), 1)
 
-    # latency: compute from event timestamps within sessions
-    kpis["avg_latency_ms"] = None
-    kpis["p95_latency_ms"] = None
-    latency_series = _compute_session_latencies(df)
-    if latency_series is not None and len(latency_series) > 0:
-        kpis["avg_latency_ms"] = round(float(latency_series.mean()), 1)
-        kpis["p95_latency_ms"] = round(float(np.percentile(latency_series, 95)), 1)
+    # ── Schema capability flags ────────────────────────────────────────────────
+    kpis["has_explicit_session_id"] = "session_id" in df.columns if not df.empty else False
+    kpis["has_explicit_latency"]    = "latency_ms" in df.columns if not df.empty else False
 
-    # frameworks: count distinct agent_id prefixes or integration sources
+    # ── Frameworks tested ──────────────────────────────────────────────────────
     agent_ids = set(df["agent_id"].dropna().unique()) if "agent_id" in df.columns else set()
     framework_signals = {
         "LangGraph/OpenHands": any("openhands" in a.lower() for a in agent_ids),
@@ -72,7 +90,7 @@ def compute_kpis(df: pd.DataFrame, eval_results: dict) -> dict:
         "smolagents":          any("smol" in a.lower() for a in agent_ids),
         "PyRIT":               "pyrit_xpia" in eval_results or "pyrit_crescendo" in eval_results,
         "Garak":               "garak_encoding" in eval_results,
-        "Promptfoo":           False,  # no runtime command; config file exists
+        "Promptfoo":           False,  # config file exists; no runtime JSON command
         "Internal suite":      "suite_asf" in eval_results or len(df) > 0,
     }
     kpis["frameworks_tested"] = sum(1 for v in framework_signals.values() if v)
@@ -147,11 +165,17 @@ STAGE_ORDER = [
 
 def latency_by_stage(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Approximate per-stage latency: delta between consecutive events in a session.
-    Returns a DataFrame with columns [stage, avg_ms, p95_ms, count].
+    Estimated inter-event gap by pipeline stage.
+
+    Computed from timestamp deltas between consecutive audit events within a
+    session – NOT from instrumented latency_ms metadata (which is absent from
+    historical SQLite rows).  Column names use the prefix 'est_gap_' to make
+    this distinction explicit.
+
+    Returns a DataFrame with columns [stage, est_gap_avg_ms, est_gap_p95_ms, count].
     """
     if df.empty or "session_key" not in df.columns:
-        return pd.DataFrame(columns=["stage", "avg_ms", "p95_ms", "count"])
+        return pd.DataFrame(columns=["stage", "est_gap_avg_ms", "est_gap_p95_ms", "count"])
 
     rows: list[dict] = []
     for _, group in df.groupby("session_key"):
@@ -168,18 +192,20 @@ def latency_by_stage(df: pd.DataFrame) -> pd.DataFrame:
                 pass
 
     if not rows:
-        return pd.DataFrame(columns=["stage", "avg_ms", "p95_ms", "count"])
+        return pd.DataFrame(columns=["stage", "est_gap_avg_ms", "est_gap_p95_ms", "count"])
 
     raw = pd.DataFrame(rows)
     agg = (
         raw.groupby("stage")["delta_ms"]
-        .agg(avg_ms="mean", p95_ms=lambda x: float(np.percentile(x, 95)), count="count")
+        .agg(
+            est_gap_avg_ms="mean",
+            est_gap_p95_ms=lambda x: float(np.percentile(x, 95)),
+            count="count",
+        )
         .reset_index()
     )
-    agg["avg_ms"] = agg["avg_ms"].round(1)
-    agg["p95_ms"] = agg["p95_ms"].round(1)
-    # order by canonical stage list
-    cat = pd.CategoricalDtype(categories=STAGE_ORDER, ordered=True)
+    agg["est_gap_avg_ms"] = agg["est_gap_avg_ms"].round(1)
+    agg["est_gap_p95_ms"] = agg["est_gap_p95_ms"].round(1)
     agg["stage"] = pd.Categorical(agg["stage"], categories=STAGE_ORDER, ordered=True)
     agg = agg.sort_values("stage").reset_index(drop=True)
     return agg
