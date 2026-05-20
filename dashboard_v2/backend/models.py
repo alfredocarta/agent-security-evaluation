@@ -44,6 +44,7 @@ class KPIMetrics(BaseModel):
     allowed_count: int
     hitl_count: int
     avg_latency_ms: float
+    p95_latency_ms: float = 0.0
     events_last_24h: int
 
 

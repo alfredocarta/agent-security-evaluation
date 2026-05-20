@@ -24,6 +24,7 @@
       </header>
 
       <main class="mx-auto max-w-7xl px-4 py-6 space-y-6">
+        <!-- KPI cards -->
         <section class="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <div class="text-sm text-gray-400">Total Events (24h)</div>
@@ -33,7 +34,7 @@
           <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <div class="text-sm text-gray-400">Detection Rate</div>
             <div class="mt-2 text-3xl font-semibold">{{ percent(metrics.detection_rate) }}</div>
-            <div class="mt-1 text-xs text-gray-500">Operational block ratio</div>
+            <div class="mt-1 text-xs text-gray-500">Blocked / (blocked + allowed + hitl)</div>
           </div>
           <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <div class="text-sm text-gray-400">Blocked / Allowed</div>
@@ -49,15 +50,16 @@
           <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <div class="text-sm text-gray-400">Average Latency</div>
             <div class="mt-2 text-3xl font-semibold">{{ Math.round(metrics.avg_latency_ms ?? 0) }}ms</div>
-            <div class="mt-1 text-xs text-gray-500">SQLite rows do not include latency metadata</div>
+            <div class="mt-1 text-xs text-gray-500">p95: {{ Math.round(metrics.p95_latency_ms ?? 0) }}ms</div>
           </div>
         </section>
 
+        <!-- EU AI Act + Timeline -->
         <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div class="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-lg p-4">
             <div class="flex items-center justify-between mb-4">
               <h2 class="text-lg font-semibold">EU AI Act Compliance</h2>
-              <span class="text-xs text-gray-500">Evidence mapped from audit outcomes</span>
+              <span class="text-xs text-gray-500">Click an article to see correlated events</span>
             </div>
             <div class="overflow-x-auto">
               <table class="w-full text-sm">
@@ -70,19 +72,48 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="item in compliance" :key="item.article" class="border-b border-gray-800/70">
-                    <td class="py-3 text-gray-100">{{ item.article }}</td>
-                    <td class="py-3">
-                      <div>{{ item.control }}</div>
-                      <div class="text-xs text-gray-500">{{ item.description }}</div>
-                    </td>
-                    <td class="py-3 text-right tabular-nums">{{ item.event_count }}</td>
-                    <td class="py-3 text-right">
-                      <span class="px-2 py-1 rounded text-xs" :class="item.event_count > 0 ? 'bg-green-900/50 text-green-300' : 'bg-gray-800 text-gray-400'">
-                        {{ item.status }}
-                      </span>
-                    </td>
-                  </tr>
+                  <template v-for="item in compliance" :key="item.article">
+                    <tr
+                      @click="toggleArticle(item.article)"
+                      class="border-b border-gray-800/70 hover:bg-gray-800/50 cursor-pointer transition-colors"
+                      :class="expandedArticle === item.article ? 'bg-gray-800/40' : ''"
+                    >
+                      <td class="py-3 text-gray-100 font-medium">
+                        <span class="flex items-center gap-1">
+                          <span class="text-gray-500 text-xs">{{ expandedArticle === item.article ? '▼' : '▶' }}</span>
+                          {{ item.article }}
+                        </span>
+                      </td>
+                      <td class="py-3">
+                        <div>{{ item.control }}</div>
+                        <div class="text-xs text-gray-500">{{ item.description }}</div>
+                      </td>
+                      <td class="py-3 text-right tabular-nums">{{ item.event_count }}</td>
+                      <td class="py-3 text-right">
+                        <span class="px-2 py-1 rounded text-xs" :class="item.event_count > 0 ? 'bg-green-900/50 text-green-300' : 'bg-gray-800 text-gray-400'">
+                          {{ item.status }}
+                        </span>
+                      </td>
+                    </tr>
+                    <tr v-if="expandedArticle === item.article">
+                      <td colspan="4" class="bg-gray-950/80 p-0">
+                        <div class="p-4 space-y-2">
+                          <div v-if="loadingArticle" class="text-sm text-gray-400">Loading events...</div>
+                          <div v-else-if="articleEvents.length === 0" class="text-sm text-gray-500">No events found for this article.</div>
+                          <div v-for="event in articleEvents" :key="event.event_id" class="border-l-2 pl-3 py-2" :class="borderClass(event)">
+                            <div class="flex flex-wrap items-center gap-2">
+                              <span class="font-mono text-xs text-gray-400">{{ timeOnly(event.timestamp) }}</span>
+                              <span class="text-xs font-medium text-gray-200">{{ event.tool_name || event.action }}</span>
+                              <span class="px-1.5 py-0.5 rounded text-xs font-semibold" :class="verdictBadgeClass(event)">{{ event.verdict || event.outcome }}</span>
+                              <span class="px-2 py-0.5 rounded-full text-xs font-medium" :class="stageBadgeClass(event.stage)">{{ event.stage }}</span>
+                              <span v-if="event.latency_ms != null" class="text-xs text-gray-500">{{ event.latency_ms }}ms</span>
+                            </div>
+                            <div class="mt-1 text-xs text-gray-400 truncate" :title="event.reason">{{ truncate(event.reason, 120) }}</div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
                 </tbody>
               </table>
             </div>
@@ -97,13 +128,28 @@
           </div>
         </section>
 
+        <!-- Sessions Timeline -->
         <section class="bg-gray-900 border border-gray-800 rounded-lg p-4">
           <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
             <div>
               <h2 class="text-lg font-semibold">Sessions Timeline</h2>
               <p class="text-sm text-gray-400">Sessions are reconstructed from consecutive agent events within 30 seconds.</p>
             </div>
-            <button @click="refresh" class="self-start md:self-auto px-3 py-2 rounded bg-gray-800 hover:bg-gray-700 text-sm">Refresh</button>
+            <div class="flex items-center gap-3">
+              <!-- Agent filter dropdown -->
+              <div class="flex items-center gap-2">
+                <label class="text-sm text-gray-400 whitespace-nowrap">Agent:</label>
+                <select
+                  v-model="selectedAgent"
+                  @change="refresh()"
+                  class="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-gray-500"
+                >
+                  <option value="">All agents</option>
+                  <option v-for="agentId in agents" :key="agentId" :value="agentId">{{ agentId }}</option>
+                </select>
+              </div>
+              <button @click="refresh" class="px-3 py-2 rounded bg-gray-800 hover:bg-gray-700 text-sm">Refresh</button>
+            </div>
           </div>
 
           <div class="overflow-x-auto">
@@ -132,24 +178,35 @@
                   </tr>
                   <tr v-if="expandedSession === session.session_id">
                     <td colspan="7" class="bg-gray-950/80 p-0">
-                      <div class="p-4 space-y-3">
+                      <div class="p-4 space-y-2">
                         <div v-if="loadingSession" class="text-sm text-gray-400">Loading session events...</div>
+                        <div v-else-if="sessionEvents.length === 0" class="text-sm text-gray-500">No events found.</div>
                         <div v-for="event in sessionEvents" :key="event.event_id" class="border-l-2 pl-4 py-2" :class="borderClass(event)">
-                          <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-1">
-                            <div class="font-mono text-xs text-gray-400">{{ formatTime(event.timestamp) }}</div>
-                            <div class="text-xs text-gray-500">Hash {{ truncate(event.event_id, 16) }}</div>
+                          <!-- Header row: timestamp | tool | verdict | stage | latency -->
+                          <div class="flex flex-wrap items-center gap-2">
+                            <span class="font-mono text-xs text-gray-400">{{ timeOnly(event.timestamp) }}</span>
+                            <span class="text-sm font-medium text-gray-200">{{ event.tool_name || event.action }}</span>
+                            <span class="px-1.5 py-0.5 rounded text-xs font-bold" :class="verdictBadgeClass(event)">{{ event.verdict || event.outcome }}</span>
+                            <span class="px-2 py-0.5 rounded-full text-xs font-medium" :class="stageBadgeClass(event.stage)">{{ event.stage }}</span>
+                            <span v-if="event.latency_ms != null" class="text-xs text-gray-500">{{ event.latency_ms }}ms</span>
                           </div>
-                          <div class="mt-1 flex flex-wrap items-center gap-2">
-                            <span class="text-sm">TOOL: <span class="text-gray-300">{{ event.tool_name || event.action }}</span></span>
-                            <span class="text-sm">VERDICT: <span :class="verdictClass(event)">{{ event.verdict || event.outcome }}</span></span>
-                            <span class="text-sm">Stage: <span class="text-gray-300">{{ event.stage }}</span></span>
-                            <span class="text-sm text-gray-400">{{ event.latency_ms ?? 0 }}ms</span>
+                          <!-- Reason row -->
+                          <div class="mt-1 text-sm text-gray-300">
+                            <span class="text-gray-500">Reason:</span>
+                            {{ truncate(event.reason, 120) }}
+                            <span v-if="event.reason && event.reason.length > 120" class="text-blue-400 cursor-pointer" @click.stop="expandReason(event.event_id)">
+                              {{ expandedReasons.has(event.event_id) ? ' less' : ' more' }}
+                            </span>
                           </div>
-                          <div class="mt-2 text-sm text-gray-300">Reason: {{ event.reason }}</div>
-                          <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-gray-500">
-                            <div>EU AI Act: {{ event.eu_ai_act_article || 'n/a' }} {{ event.eu_ai_act_control ? '- ' + event.eu_ai_act_control : '' }}</div>
-                            <div>Agent model: {{ event.agent_model || 'not recorded' }}</div>
-                            <div>Security model: {{ event.security_model || 'not recorded' }}</div>
+                          <div v-if="expandedReasons.has(event.event_id)" class="mt-1 text-sm text-gray-300">{{ event.reason }}</div>
+                          <!-- Meta row -->
+                          <div class="mt-1.5 flex flex-wrap gap-3 text-xs text-gray-500">
+                            <div v-if="event.eu_ai_act_article">
+                              <span class="text-gray-600">EU AI Act:</span>
+                              {{ event.eu_ai_act_article }}{{ event.eu_ai_act_control ? ' – ' + event.eu_ai_act_control : '' }}
+                            </div>
+                            <div><span class="text-gray-600">Security model:</span> {{ event.security_model || 'not recorded' }}</div>
+                            <div v-if="event.confidence != null"><span class="text-gray-600">Confidence:</span> {{ (event.confidence * 100).toFixed(0) }}%</div>
                           </div>
                         </div>
                       </div>
@@ -173,9 +230,15 @@
             compliance: [],
             sessions: [],
             events: [],
+            agents: [],
+            selectedAgent: '',
             sessionEvents: [],
             expandedSession: null,
             loadingSession: false,
+            expandedReasons: new Set(),
+            articleEvents: [],
+            expandedArticle: null,
+            loadingArticle: false,
             lastRefresh: '',
             chart: null,
           };
@@ -191,27 +254,34 @@
             return await response.json();
           },
           async refresh() {
-            const [metrics, compliance, sessions, events] = await Promise.all([
-              this.fetchJson('/api/metrics'),
+            const agentParam = this.selectedAgent ? `?agent_id=${encodeURIComponent(this.selectedAgent)}` : '';
+            const [metrics, compliance, sessions, events, agents] = await Promise.all([
+              this.fetchJson(`/api/metrics${agentParam}`),
               this.fetchJson('/api/compliance'),
-              this.fetchJson('/api/sessions'),
+              this.fetchJson(`/api/sessions${agentParam}`),
               this.fetchJson('/api/events?limit=200'),
+              this.fetchJson('/api/agents'),
             ]);
             this.metrics = metrics;
             this.compliance = compliance;
             this.sessions = sessions;
             this.events = events;
+            this.agents = agents;
             this.lastRefresh = new Date().toLocaleTimeString();
             this.renderTimeline();
             if (this.expandedSession) await this.loadSession(this.expandedSession);
+            if (this.expandedArticle) await this.loadArticle(this.expandedArticle);
           },
+
           async toggleSession(sessionId) {
             if (this.expandedSession === sessionId) {
               this.expandedSession = null;
               this.sessionEvents = [];
+              this.expandedReasons = new Set();
               return;
             }
             this.expandedSession = sessionId;
+            this.expandedReasons = new Set();
             await this.loadSession(sessionId);
           },
           async loadSession(sessionId) {
@@ -222,6 +292,32 @@
               this.loadingSession = false;
             }
           },
+
+          async toggleArticle(article) {
+            if (this.expandedArticle === article) {
+              this.expandedArticle = null;
+              this.articleEvents = [];
+              return;
+            }
+            this.expandedArticle = article;
+            await this.loadArticle(article);
+          },
+          async loadArticle(article) {
+            this.loadingArticle = true;
+            try {
+              this.articleEvents = await this.fetchJson(`/api/compliance/${encodeURIComponent(article)}`);
+            } finally {
+              this.loadingArticle = false;
+            }
+          },
+
+          expandReason(eventId) {
+            const next = new Set(this.expandedReasons);
+            if (next.has(eventId)) next.delete(eventId);
+            else next.add(eventId);
+            this.expandedReasons = next;
+          },
+
           renderTimeline() {
             const buckets = {};
             for (const event of this.events) {
@@ -249,6 +345,7 @@
               },
             });
           },
+
           percent(value) {
             return `${Math.round((value || 0) * 100)}%`;
           },
@@ -259,25 +356,53 @@
           },
           truncate(value, length) {
             value = value || '';
-            return value.length > length ? `${value.slice(0, length)}...` : value;
+            return value.length > length ? `${value.slice(0, length)}…` : value;
           },
           formatTime(value) {
             if (!value) return '';
             return value.replace('T', ' ').slice(0, 19);
           },
+          timeOnly(value) {
+            if (!value) return '';
+            const part = value.replace('T', ' ');
+            return part.slice(11, 23) || part.slice(0, 19);
+          },
+
+          verdictBadgeClass(event) {
+            const v = event.verdict || event.outcome || '';
+            if (v === 'DENY' || v === 'KILL_SWITCH' || event.outcome === 'KILL_SWITCH' || event.outcome === 'BLOCKED') {
+              return 'bg-red-900/60 text-red-300';
+            }
+            if (v === 'ALLOW' || event.outcome === 'ALLOWED') return 'bg-green-900/60 text-green-300';
+            if (v === 'HITL') return 'bg-yellow-900/60 text-yellow-300';
+            return 'bg-gray-800 text-gray-300';
+          },
+          borderClass(event) {
+            const v = event.verdict || event.outcome || '';
+            if (v === 'DENY' || v === 'KILL_SWITCH' || event.outcome === 'KILL_SWITCH' || event.outcome === 'BLOCKED') return 'border-red-600';
+            if (v === 'ALLOW' || event.outcome === 'ALLOWED') return 'border-green-600';
+            if (v === 'HITL') return 'border-yellow-500';
+            return 'border-gray-700';
+          },
+          stageBadgeClass(stage) {
+            if (!stage) return 'bg-gray-700/50 text-gray-400';
+            const s = stage.toLowerCase();
+            if (s.includes('l1.5') || s === 'l1_5') return 'bg-purple-500/20 text-purple-300 border border-purple-500/30';
+            if (s.includes('stage 2.5') || s.includes('deberta')) return 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30';
+            if (s.includes('stage 2')) return 'bg-blue-500/20 text-blue-300 border border-blue-500/30';
+            if (s.includes('stage 1')) return 'bg-orange-500/20 text-orange-300 border border-orange-500/30';
+            if (s.includes('stage 3') || s.includes('llm')) return 'bg-violet-600/20 text-violet-300 border border-violet-600/30';
+            if (s.includes('output guard')) return 'bg-pink-500/20 text-pink-300 border border-pink-500/30';
+            if (s.includes('prompt guard')) return 'bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30';
+            return 'bg-gray-700/50 text-gray-400';
+          },
+
           verdictClass(event) {
             const value = event.verdict || event.outcome || '';
             if (value === 'DENY' || value === 'KILL_SWITCH' || event.outcome === 'KILL_SWITCH') return 'text-red-400 font-semibold';
             if (value === 'ALLOW') return 'text-green-400 font-semibold';
             if (value === 'HITL') return 'text-yellow-400 font-semibold';
             return 'text-gray-300 font-semibold';
-          },
-          borderClass(event) {
-            const value = event.verdict || event.outcome || '';
-            if (value === 'DENY' || value === 'KILL_SWITCH' || event.outcome === 'KILL_SWITCH') return 'border-red-600';
-            if (value === 'ALLOW') return 'border-green-600';
-            if (value === 'HITL') return 'border-yellow-500';
-            return 'border-gray-700';
           },
         },
       }).mount('#app');

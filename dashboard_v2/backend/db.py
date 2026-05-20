@@ -20,6 +20,13 @@ BLOCK_OUTCOMES = {"BLOCKED", "KILL_SWITCH", "OUTPUT_BLOCK"}
 HITL_OUTCOMES = {"HITL_REQUESTED"}
 TERMINAL_OUTCOMES = ALLOW_OUTCOMES | BLOCK_OUTCOMES | HITL_OUTCOMES
 
+ARTICLE_OUTCOMES: dict[str, set[str]] = {
+    "Art. 9": {"KILL_SWITCH", "BLOCKED"},
+    "Art. 12": {"OUTPUT_BLOCK"},
+    "Art. 14": {"HITL_REQUESTED"},
+    "Art. 15": {"ALLOWED"},
+}
+
 ARTICLE_BY_OUTCOME = {
     "KILL_SWITCH": ("Art. 9", "Risk management"),
     "BLOCKED": ("Art. 9", "Risk management"),
@@ -28,25 +35,20 @@ ARTICLE_BY_OUTCOME = {
     "ALLOWED": ("Art. 15", "Accuracy"),
 }
 
-STAGE_BY_OUTCOME = {
+INTERMEDIATE_STAGE: dict[str, str] = {
     "INTERCEPTOR_START": "L1.5",
     "VALIDATOR_START": "L1.5",
     "SIGNATURE_OK": "L1.5",
-    "STAGE_1_START": "Stage 1 Regex",
-    "STAGE_1_PASS": "Stage 1 Regex",
-    "STAGE_2_START": "Stage 2 TF-IDF + Random Forest",
-    "STAGE_2_UNCERTAIN": "Stage 2 TF-IDF + Random Forest",
+    "STAGE_1_START": "Stage 1",
+    "STAGE_1_PASS": "Stage 1",
+    "STAGE_2_START": "Stage 2",
+    "STAGE_2_UNCERTAIN": "Stage 2",
     "STAGE_2.5_START": "Stage 2.5 DeBERTa",
     "STAGE_2.5_UNCERTAIN": "Stage 2.5 DeBERTa",
     "STAGE_2.5B_START": "Stage 2.5b Prompt Guard",
     "STAGE_2.5B_UNAVAILABLE": "Stage 2.5b Prompt Guard",
     "STAGE_3_START": "Stage 3 LLM",
     "STAGE_3_DOUBLE_CHECK": "Stage 3 LLM",
-    "KILL_SWITCH": "Blocking Gate",
-    "BLOCKED": "Blocking Gate",
-    "ALLOWED": "Final Verdict",
-    "HITL_REQUESTED": "Human Oversight",
-    "OUTPUT_BLOCK": "Output Guard",
 }
 
 
@@ -112,6 +114,39 @@ def _sessionize(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
+def _enrich_with_chain_data(rows: list[dict[str, Any]]) -> None:
+    """Follow hash chains to assign trace_ids and compute latency_ms on terminal events."""
+    by_prev_hash: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        ph = row.get("prev_hash")
+        if ph:
+            by_prev_hash[ph] = row
+
+    for row in rows:
+        if row.get("outcome") != "INTERCEPTOR_START":
+            continue
+        start_ts = _parse_timestamp(row.get("timestamp"))
+        trace_id = f"trace-{(row.get('hash') or '')[:12]}"
+        row["trace_id"] = trace_id
+
+        current = row
+        for _ in range(30):
+            h = current.get("hash")
+            if not h:
+                break
+            nxt = by_prev_hash.get(h)
+            if not nxt:
+                break
+            nxt["trace_id"] = trace_id
+            if nxt.get("outcome") in TERMINAL_OUTCOMES:
+                if start_ts:
+                    end_ts = _parse_timestamp(nxt.get("timestamp"))
+                    if end_ts and end_ts >= start_ts:
+                        nxt["latency_ms"] = int((end_ts - start_ts).total_seconds() * 1000)
+                break
+            current = nxt
+
+
 def _extract_confidence(reason: str | None) -> float | None:
     if not reason:
         return None
@@ -136,11 +171,30 @@ def _infer_verdict(outcome: str) -> str:
     return outcome
 
 
+def _extract_stage(outcome: str, reason: str | None) -> str:
+    if outcome in INTERMEDIATE_STAGE:
+        return INTERMEDIATE_STAGE[outcome]
+    if outcome == "OUTPUT_BLOCK":
+        return "Output Guard"
+    r = (reason or "").lower()
+    if "deberta" in r or "stage 2.5" in r:
+        return "Stage 2.5 DeBERTa"
+    if "stage 3" in r or "llm" in r or "double-check" in r or "double_check" in r:
+        return "Stage 3 LLM"
+    if "stage 2" in r:
+        return "Stage 2"
+    if "stage 1" in r or "regex" in r:
+        return "Stage 1"
+    if "not in permissions" in r or "suspended" in r or "canary" in r or "l1.5" in r:
+        return "L1.5"
+    return INTERMEDIATE_STAGE.get(outcome, "Unknown")
+
+
 def _infer_security_model(outcome: str, reason: str | None) -> str:
     text = f"{outcome} {reason or ''}".lower()
     if "stage 2.5b" in text or "prompt guard" in text:
         return "Prompt Guard / ProtectAI fallback"
-    if "deberta" in text or "stage_2.5" in text:
+    if "deberta" in text or "stage_2.5" in text or "stage 2.5" in text:
         return "DeBERTa Stage 2.5"
     if "gemma" in text or "stage 3" in text or "llm" in text:
         return "Stage 3 Gemma 2B"
@@ -152,9 +206,9 @@ def _infer_security_model(outcome: str, reason: str | None) -> str:
 
 
 def _normalize_event(row: dict[str, Any]) -> AuditEvent:
-    article, control = ARTICLE_BY_OUTCOME.get(row.get("outcome") or "", (None, None))
     outcome = row.get("outcome") or ""
     reason = row.get("reason") or ""
+    article, control = ARTICLE_BY_OUTCOME.get(outcome, (None, None))
     return AuditEvent(
         event_id=row.get("hash") or "",
         timestamp=str(row.get("timestamp") or ""),
@@ -164,12 +218,12 @@ def _normalize_event(row: dict[str, Any]) -> AuditEvent:
         reason=reason,
         trace_id=row.get("trace_id"),
         session_id=row.get("session_id"),
-        latency_ms=None,
+        latency_ms=row.get("latency_ms"),
         confidence=_extract_confidence(reason),
         eu_ai_act_article=article,
         eu_ai_act_control=control,
         tool_name=row.get("action") or None,
-        stage=STAGE_BY_OUTCOME.get(outcome, "Unknown"),
+        stage=_extract_stage(outcome, reason),
         verdict=_infer_verdict(outcome),
         agent_model="not recorded in SQLite audit trail",
         security_model=_infer_security_model(outcome, reason),
@@ -188,7 +242,9 @@ async def _fetch_rows() -> list[dict[str, Any]]:
             "FROM audit_trail ORDER BY timestamp ASC"
         )
         rows = [dict(row) for row in await cursor.fetchall()]
-    return _sessionize(rows)
+    rows = _sessionize(rows)
+    _enrich_with_chain_data(rows)
+    return rows
 
 
 async def get_recent_events(limit: int = 100) -> list[AuditEvent]:
@@ -198,7 +254,10 @@ async def get_recent_events(limit: int = 100) -> list[AuditEvent]:
 
 async def get_session_events(session_id: str) -> list[AuditEvent]:
     rows = await _fetch_rows()
-    return [_normalize_event(row) for row in rows if row.get("session_id") == session_id]
+    session_rows = [row for row in rows if row.get("session_id") == session_id]
+    terminal = [row for row in session_rows if (row.get("outcome") or "") in TERMINAL_OUTCOMES]
+    source = terminal if terminal else session_rows
+    return [_normalize_event(row) for row in source]
 
 
 async def get_trace_events(trace_id: str) -> list[AuditEvent]:
@@ -206,10 +265,12 @@ async def get_trace_events(trace_id: str) -> list[AuditEvent]:
     return [_normalize_event(row) for row in rows if row.get("trace_id") == trace_id]
 
 
-async def get_sessions(limit: int = 50) -> list[SessionSummary]:
+async def get_sessions(limit: int = 50, agent_id: str | None = None) -> list[SessionSummary]:
     rows = await _fetch_rows()
     sessions: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
+        if agent_id and row.get("agent_id") != agent_id:
+            continue
         sessions.setdefault(row["session_id"], []).append(row)
 
     summaries = []
@@ -234,19 +295,31 @@ async def get_sessions(limit: int = 50) -> list[SessionSummary]:
     return summaries[:limit]
 
 
-async def get_metrics() -> KPIMetrics:
+async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
     rows = await _fetch_rows()
-    outcomes = [row.get("outcome") or "" for row in rows]
-    blocked = sum(1 for outcome in outcomes if outcome in BLOCK_OUTCOMES)
-    allowed = sum(1 for outcome in outcomes if outcome in ALLOW_OUTCOMES)
-    hitl = sum(1 for outcome in outcomes if outcome in HITL_OUTCOMES)
+    if agent_id:
+        rows = [row for row in rows if row.get("agent_id") == agent_id]
+
+    terminal_rows = [row for row in rows if (row.get("outcome") or "") in TERMINAL_OUTCOMES]
+    blocked = sum(1 for row in terminal_rows if (row.get("outcome") or "") in BLOCK_OUTCOMES)
+    allowed = sum(1 for row in terminal_rows if (row.get("outcome") or "") in ALLOW_OUTCOMES)
+    hitl = sum(1 for row in terminal_rows if (row.get("outcome") or "") in HITL_OUTCOMES)
     terminal = blocked + allowed + hitl
+
+    latencies = [row["latency_ms"] for row in rows if row.get("latency_ms") is not None]
+    avg_latency_ms = sum(latencies) / len(latencies) if latencies else 0.0
+    p95_latency_ms = 0.0
+    if latencies:
+        s = sorted(latencies)
+        idx = max(0, int(0.95 * len(s)) - 1)
+        p95_latency_ms = float(s[idx])
+
     now = datetime.utcnow()
-    last_24h = 0
-    for row in rows:
-        ts = _parse_timestamp(row.get("timestamp"))
-        if ts and now - ts <= timedelta(hours=24):
-            last_24h += 1
+    cutoff = now - timedelta(hours=24)
+    last_24h = sum(
+        1 for row in rows
+        if (_parse_timestamp(row.get("timestamp")) or datetime.min) >= cutoff
+    )
 
     return KPIMetrics(
         total_events=len(rows),
@@ -255,6 +328,30 @@ async def get_metrics() -> KPIMetrics:
         blocked_count=blocked,
         allowed_count=allowed,
         hitl_count=hitl,
-        avg_latency_ms=0.0,
+        avg_latency_ms=round(avg_latency_ms, 1),
+        p95_latency_ms=round(p95_latency_ms, 1),
         events_last_24h=last_24h,
     )
+
+
+async def get_agents() -> list[str]:
+    db_path = get_db_path()
+    if not _has_audit_schema(db_path):
+        return []
+    async with aiosqlite.connect(db_path) as conn:
+        cursor = await conn.execute(
+            "SELECT DISTINCT agent_id FROM audit_trail "
+            "WHERE agent_id IS NOT NULL ORDER BY agent_id"
+        )
+        rows = await cursor.fetchall()
+    return [row[0] for row in rows]
+
+
+async def get_compliance_events(article_code: str, limit: int = 20) -> list[AuditEvent]:
+    outcomes = ARTICLE_OUTCOMES.get(article_code, set())
+    if not outcomes:
+        return []
+    rows = await _fetch_rows()
+    filtered = [row for row in rows if (row.get("outcome") or "") in outcomes]
+    filtered.sort(key=lambda r: r.get("timestamp") or "", reverse=True)
+    return [_normalize_event(row) for row in filtered[:limit]]

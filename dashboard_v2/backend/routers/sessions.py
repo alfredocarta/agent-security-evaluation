@@ -10,8 +10,11 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
 
 @router.get("", response_model=list[SessionSummary])
-async def recent_sessions(limit: int = Query(default=50, ge=1, le=500)):
-    return await get_sessions(limit=limit)
+async def recent_sessions(
+    limit: int = Query(default=50, ge=1, le=500),
+    agent_id: str | None = Query(default=None),
+):
+    return await get_sessions(limit=limit, agent_id=agent_id)
 
 
 @router.get("/{session_id}", response_model=list[AuditEvent])

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from ..db import get_recent_events
-from ..models import ComplianceItem
+from ..db import get_compliance_events, get_recent_events
+from ..models import AuditEvent, ComplianceItem
 
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
@@ -51,3 +51,8 @@ async def compliance():
             status="Active" if count > 0 else "No evidence",
         ))
     return items
+
+
+@router.get("/{article_code}", response_model=list[AuditEvent])
+async def compliance_events(article_code: str):
+    return await get_compliance_events(article_code, limit=20)
