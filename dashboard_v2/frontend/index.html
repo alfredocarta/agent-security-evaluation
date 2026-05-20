@@ -1,364 +1,814 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ASF Compliance Dashboard</title>
+    <!-- Fix 3: Inter + JetBrains Mono fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- Tailwind (layout utilities only; colors come from CSS vars) -->
+    <script>tailwind.config = { darkMode: 'class' }</script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+      /* ── Fix 2: CSS custom properties ── */
+      :root {
+        --bg-primary:   #ffffff;
+        --bg-secondary: #f8f9fa;
+        --bg-card:      #ffffff;
+        --bg-sidebar:   #f8f9fa;
+        --bg-stripe:    #f9fafb;
+        --bg-hover:     #f3f4f6;
+        --text-primary:   #111827;
+        --text-secondary: #6b7280;
+        --text-muted:     #9ca3af;
+        --border:         #e5e7eb;
+        --border-subtle:  #f3f4f6;
+        --accent:         #3b82f6;
+        --accent-hover:   #2563eb;
+        --success:  #16a34a;
+        --danger:   #dc2626;
+        --warning:  #d97706;
+        --badge-allow-bg:   #dcfce7;
+        --badge-allow-text: #15803d;
+        --badge-deny-bg:    #fee2e2;
+        --badge-deny-text:  #dc2626;
+        --badge-hitl-bg:    #fef9c3;
+        --badge-hitl-text:  #854d0e;
+        --shadow: rgba(0,0,0,0.07);
+      }
+
+      .dark {
+        --bg-primary:   #0d0f14;
+        --bg-secondary: #0f1117;
+        --bg-card:      #161b27;
+        --bg-sidebar:   #0f1117;
+        --bg-stripe:    rgba(255,255,255,0.018);
+        --bg-hover:     rgba(255,255,255,0.048);
+        --text-primary:   #f1f5f9;
+        --text-secondary: #94a3b8;
+        --text-muted:     #64748b;
+        --border:         #1e2737;
+        --border-subtle:  #1a2236;
+        --accent:         #3b82f6;
+        --accent-hover:   #60a5fa;
+        --success:  #22c55e;
+        --danger:   #ef4444;
+        --warning:  #f59e0b;
+        --badge-allow-bg:   #052e16;
+        --badge-allow-text: #4ade80;
+        --badge-deny-bg:    #450a0a;
+        --badge-deny-text:  #f87171;
+        --badge-hitl-bg:    #422006;
+        --badge-hitl-text:  #fcd34d;
+        --shadow: rgba(0,0,0,0.32);
+      }
+
+      /* ── Base ── */
+      html { scroll-behavior: smooth; }
+      *, *::before, *::after { box-sizing: border-box; }
+
+      body {
+        font-family: 'Inter', system-ui, sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+        margin: 0;
+      }
+
+      /* ── Fix 1: Sidebar + content layout ── */
+      .app-layout { display: flex; min-height: 100vh; }
+
+      .sidebar {
+        width: 240px;
+        position: fixed;
+        top: 0; left: 0; bottom: 0;
+        background: var(--bg-sidebar);
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        z-index: 30;
+        overflow-y: auto;
+      }
+
+      .sidebar-logo {
+        padding: 18px 16px 14px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+      }
+
+      .sidebar-logo-icon {
+        width: 30px; height: 30px;
+        background: var(--accent);
+        border-radius: 7px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.7rem; font-weight: 800; color: #fff;
+        letter-spacing: 0.02em;
+        flex-shrink: 0;
+      }
+
+      .sidebar-logo-text { line-height: 1.25; }
+      .sidebar-logo-title { font-size: 0.875rem; font-weight: 700; color: var(--text-primary); }
+      .sidebar-logo-sub   { font-size: 0.68rem; color: var(--text-muted); }
+
+      .sidebar-nav { padding: 10px 0; flex: 1; }
+
+      .nav-section-label {
+        padding: 8px 18px 3px;
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+        color: var(--text-muted);
+      }
+
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 9px 12px 9px 14px;
+        margin: 1px 8px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+        text-decoration: none;
+        border-radius: 6px;
+        border-left: 3px solid transparent;
+        transition: background 120ms, color 120ms;
+        cursor: pointer;
+      }
+      .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+      .nav-item.active {
+        color: var(--accent);
+        background: rgba(59,130,246,0.09);
+        border-left-color: var(--accent);
+      }
+
+      .nav-badge {
+        margin-left: auto;
+        background: var(--warning);
+        color: #000;
+        font-size: 0.65rem;
+        font-weight: 800;
+        padding: 1px 6px;
+        border-radius: 9999px;
+        line-height: 1.5;
+      }
+
+      .sidebar-footer {
+        padding: 14px 18px;
+        border-top: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+
+      .content-wrapper { margin-left: 240px; flex: 1; display: flex; flex-direction: column; }
+
+      /* ── Fix 7: Topbar ── */
+      .topbar {
+        height: 56px;
+        background: var(--bg-card);
+        border-bottom: 1px solid var(--border);
+        padding: 0 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        flex-shrink: 0;
+      }
+
+      .topbar-title {
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .topbar-actions { display: flex; align-items: center; gap: 14px; }
+
+      .topbar-refresh { font-size: 0.8125rem; color: var(--text-muted); }
+
+      .theme-btn {
+        width: 34px; height: 34px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 8px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        cursor: pointer;
+        font-size: 1rem;
+        color: var(--text-secondary);
+        transition: background 120ms, border-color 120ms;
+        line-height: 1;
+      }
+      .theme-btn:hover { background: var(--bg-hover); }
+
+      /* ── Fix 6: Cards ── */
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: 0 1px 3px var(--shadow);
+        padding: 20px 24px;
+      }
+
+      /* ── Section headers ── */
+      .section-hdr {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 14px;
+        margin-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+      }
+      .section-title { font-size: 1rem; font-weight: 600; color: var(--text-primary); }
+      .section-sub   { font-size: 0.8125rem; color: var(--text-muted); }
+
+      /* ── Fix 3 + Fix 4: KPI cards ── */
+      .kpi-label {
+        font-size: 0.6875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--text-secondary);
+      }
+      .kpi-value {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 2.25rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+        margin-top: 8px;
+        font-variant-numeric: tabular-nums;
+      }
+      .kpi-sub   { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+      .kpi-trend { font-size: 0.75rem; margin-top: 5px; font-weight: 500; }
+      .kpi-trend.up      { color: var(--success); }
+      .kpi-trend.down    { color: var(--danger); }
+      .kpi-trend.neutral { color: var(--text-muted); }
+
+      /* ── Badges ── */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        line-height: 1.6;
+        white-space: nowrap;
+      }
+      .badge-allow   { background: var(--badge-allow-bg);  color: var(--badge-allow-text); }
+      .badge-deny    { background: var(--badge-deny-bg);   color: var(--badge-deny-text);  }
+      .badge-hitl    { background: var(--badge-hitl-bg);   color: var(--badge-hitl-text);  }
+      .badge-neutral { background: var(--bg-hover);        color: var(--text-secondary);   }
+
+      /* Stage badges — same rgba works for both modes */
+      .badge-stage { border: 1px solid; }
+      /* dark defaults */
+      .badge-stage-l15    { color: #c084fc; background: rgba(192,132,252,.1); border-color: rgba(192,132,252,.25); }
+      .badge-stage-1      { color: #fb923c; background: rgba(251,146,60,.1);  border-color: rgba(251,146,60,.25);  }
+      .badge-stage-2      { color: #60a5fa; background: rgba(96,165,250,.1);  border-color: rgba(96,165,250,.25);  }
+      .badge-stage-25     { color: #818cf8; background: rgba(129,140,248,.1); border-color: rgba(129,140,248,.25); }
+      .badge-stage-3      { color: #a78bfa; background: rgba(167,139,250,.1); border-color: rgba(167,139,250,.25); }
+      .badge-stage-output { color: #f472b6; background: rgba(244,114,182,.1); border-color: rgba(244,114,182,.25); }
+      .badge-stage-pg     { color: #e879f9; background: rgba(232,121,249,.1); border-color: rgba(232,121,249,.25); }
+      .badge-stage-unk    { background: var(--bg-hover); color: var(--text-muted); border-color: var(--border); }
+      /* light mode overrides (stronger contrast) */
+      :root .badge-stage-l15    { color: #7c3aed; background: rgba(124,58,237,.07);  border-color: rgba(124,58,237,.2);  }
+      :root .badge-stage-1      { color: #c2410c; background: rgba(194,65,12,.07);   border-color: rgba(194,65,12,.2);   }
+      :root .badge-stage-2      { color: #1d4ed8; background: rgba(29,78,216,.07);   border-color: rgba(29,78,216,.2);   }
+      :root .badge-stage-25     { color: #4338ca; background: rgba(67,56,202,.07);   border-color: rgba(67,56,202,.2);   }
+      :root .badge-stage-3      { color: #6d28d9; background: rgba(109,40,217,.07);  border-color: rgba(109,40,217,.2);  }
+      :root .badge-stage-output { color: #be185d; background: rgba(190,24,93,.07);   border-color: rgba(190,24,93,.2);   }
+
+      /* ── Fix 5: Tables ── */
+      .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+      .data-table thead { position: sticky; top: 0; z-index: 5; }
+      .data-table th {
+        padding: 9px 12px;
+        font-size: 0.675rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--text-secondary);
+        background: var(--bg-card);
+        border-bottom: 2px solid var(--border);
+        text-align: left;
+        white-space: nowrap;
+      }
+      .data-table th.r, .data-table td.r { text-align: right; }
+      .data-table tbody tr {
+        border-bottom: 1px solid var(--border-subtle);
+        transition: background 130ms;
+      }
+      .data-table tbody tr:nth-child(even) { background: var(--bg-stripe); }
+      .data-table tbody tr:hover           { background: var(--bg-hover); cursor: pointer; }
+      .data-table td { padding: 10px 12px; color: var(--text-primary); }
+      .td-mono { font-family: 'JetBrains Mono', monospace; font-size: 0.8125rem; color: var(--text-muted); }
+
+      /* ── Before/after cards ── */
+      .cmp-good {
+        background: rgba(22,163,74,.05);
+        border: 1px solid rgba(22,163,74,.2);
+        border-radius: 10px; padding: 14px;
+      }
+      .cmp-bad {
+        background: rgba(220,38,38,.05);
+        border: 1px solid rgba(220,38,38,.2);
+        border-radius: 10px; padding: 14px;
+      }
+      .dark .cmp-good { background: rgba(34,197,94,.05);  border-color: rgba(34,197,94,.15); }
+      .dark .cmp-bad  { background: rgba(239,68,68,.05);  border-color: rgba(239,68,68,.15); }
+
+      /* ── HITL banners ── */
+      .hitl-banner {
+        padding: 11px 16px;
+        border-radius: 8px;
+        border-left: 4px solid var(--warning);
+        background: var(--badge-hitl-bg);
+        color: var(--warning);
+        font-size: 0.875rem;
+        font-weight: 500;
+        display: flex; align-items: center; gap: 8px;
+      }
+      .hitl-banner-ok {
+        padding: 11px 16px;
+        border-radius: 8px;
+        border-left: 4px solid var(--success);
+        background: var(--badge-allow-bg);
+        color: var(--success);
+        font-size: 0.875rem;
+        font-weight: 500;
+        display: flex; align-items: center; gap: 8px;
+      }
+
+      /* ── Session drill-down event rows ── */
+      .ev-row {
+        border-left: 3px solid var(--border);
+        padding: 10px 14px;
+        margin-bottom: 5px;
+        border-radius: 0 8px 8px 0;
+        background: var(--bg-secondary);
+      }
+      .ev-deny  { border-left-color: var(--danger);  }
+      .ev-allow { border-left-color: var(--success); }
+      .ev-hitl  { border-left-color: var(--warning); }
+
+      /* ── Typography helpers ── */
+      .mono { font-family: 'JetBrains Mono', monospace; font-size: 0.875em; }
+      .c-primary   { color: var(--text-primary); }
+      .c-secondary { color: var(--text-secondary); }
+      .c-muted     { color: var(--text-muted); }
+      .c-danger    { color: var(--danger);  font-weight: 600; }
+      .c-success   { color: var(--success); font-weight: 600; }
+      .c-warning   { color: var(--warning); }
+      .c-accent    { color: var(--accent); }
+
+      /* scroll target offset */
+      section[id] { scroll-margin-top: 72px; }
+
+      /* custom scrollbars */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+    </style>
   </head>
-  <body class="bg-gray-950 text-gray-100">
-    <div id="app" class="min-h-screen">
-      <header class="border-b border-gray-800 bg-gray-950/95 sticky top-0 z-10">
-        <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 class="text-xl font-semibold tracking-normal">ASF Compliance Dashboard</h1>
-            <p class="text-sm text-gray-400">SQLite audit trail source of truth · polling every 5s</p>
-          </div>
-          <div class="text-right text-sm text-gray-400">
-            <div>Last refresh</div>
-            <div class="text-gray-100">{{ lastRefresh || 'pending' }}</div>
+
+  <body>
+    <!-- theme initialised before Vue mounts to avoid flash -->
+    <script>
+      (function () {
+        var saved = localStorage.getItem('asf-theme') || 'dark';
+        if (saved === 'light') document.documentElement.classList.remove('dark');
+        else document.documentElement.classList.add('dark');
+      })();
+    </script>
+
+    <div id="app" class="app-layout">
+
+      <!-- ══════════════════════════════════
+           Fix 1: Fixed left sidebar
+           ══════════════════════════════════ -->
+      <aside class="sidebar">
+        <div class="sidebar-logo">
+          <div class="sidebar-logo-icon">ASF</div>
+          <div class="sidebar-logo-text">
+            <div class="sidebar-logo-title">Agent Security</div>
+            <div class="sidebar-logo-sub">Framework</div>
           </div>
         </div>
-      </header>
 
-      <main class="mx-auto max-w-7xl px-4 py-6 space-y-6">
+        <nav class="sidebar-nav">
+          <div class="nav-section-label">Navigation</div>
 
-        <!-- ── KPI cards (Fix 1 + Fix 3) ── -->
-        <section class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <a class="nav-item" :class="{ active: activeSection === 'overview' }"
+             href="#overview" @click.prevent="scrollTo('overview')">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="currentColor" style="flex-shrink:0;opacity:.75">
+              <path d="M1 1h6v6H1V1zm7 0h6v6H8V1zM1 8h6v6H1V8zm7 0h6v6H8V8z"/>
+            </svg>
+            Overview
+          </a>
 
-          <!-- Fix 3: Tool Calls Monitored -->
-          <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <div class="text-sm text-gray-400">Tool Calls Monitored (24h)</div>
-            <div class="mt-2 text-3xl font-semibold">{{ metrics.events_last_24h ?? 0 }}</div>
-            <div class="mt-1 text-xs text-gray-500">{{ metrics.total_events ?? 0 }} total since deployment</div>
+          <a class="nav-item" :class="{ active: activeSection === 'compliance' }"
+             href="#compliance" @click.prevent="scrollTo('compliance')">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="currentColor" style="flex-shrink:0;opacity:.75">
+              <path d="M7.5 1 1.5 4v4c0 3.3 2.4 6.1 6 7 3.6-.9 6-3.7 6-7V4L7.5 1zm-1 9L4 7.5l.9-.9L6.5 8l3.1-3 .9.9L6.5 10z"/>
+            </svg>
+            EU AI Act
+          </a>
+
+          <a class="nav-item" :class="{ active: activeSection === 'hitl' }"
+             href="#hitl" @click.prevent="scrollTo('hitl')">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="currentColor" style="flex-shrink:0;opacity:.75">
+              <path d="M7.5 1a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM2 9.5a5.5 5.5 0 0111 0V11H2V9.5zM1 12h13v2H1v-2z"/>
+            </svg>
+            HITL Queue
+            <span v-if="hitlEvents.length > 0" class="nav-badge">{{ hitlEvents.length }}</span>
+          </a>
+
+          <a class="nav-item" :class="{ active: activeSection === 'sessions' }"
+             href="#sessions" @click.prevent="scrollTo('sessions')">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="currentColor" style="flex-shrink:0;opacity:.75">
+              <path d="M1 2h13v2H1V2zm0 4h13v2H1V6zm0 4h9v2H1v-2z"/>
+            </svg>
+            Sessions
+          </a>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="mono c-muted" style="font-size:0.7rem;">v2.0 · SQLite</div>
+          <div class="c-muted" style="font-size:0.7rem;margin-top:2px;">
+            {{ sessions.length }} sessions loaded
           </div>
+        </div>
+      </aside>
 
-          <!-- Fix 1: Block Rate (renamed from Detection Rate) -->
-          <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <div class="text-sm text-gray-400">Block Rate</div>
-            <div class="mt-2 text-3xl font-semibold" :class="blockRateClass">{{ percent(metrics.detection_rate) }}</div>
-            <div class="mt-1 text-xs text-gray-500">of tool calls blocked by ASF security controls</div>
-            <div class="mt-1 text-xs text-gray-600">Expected range varies by agent type and threat profile</div>
-          </div>
+      <!-- ══════════════════════════════════
+           Content area
+           ══════════════════════════════════ -->
+      <div class="content-wrapper">
 
-          <!-- Fix 3: Security Decisions -->
-          <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <div class="text-sm text-gray-400">Security Decisions</div>
-            <div class="mt-3 h-3 rounded bg-gray-800 overflow-hidden flex">
-              <div class="bg-red-600" :style="{ width: ratioWidth(metrics.blocked_count, metrics.allowed_count, true) }"></div>
-              <div class="bg-green-600" :style="{ width: ratioWidth(metrics.blocked_count, metrics.allowed_count, false) }"></div>
-            </div>
-            <div class="mt-3 flex justify-between text-xs text-gray-400">
-              <span class="text-red-400">{{ metrics.blocked_count ?? 0 }} threats blocked</span>
-              <span class="text-green-400">{{ metrics.allowed_count ?? 0 }} requests authorized</span>
-            </div>
-          </div>
-
-          <!-- Fix 3: Security Overhead -->
-          <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <div class="text-sm text-gray-400">Security Overhead</div>
-            <div class="mt-2 text-3xl font-semibold">{{ Math.round(metrics.avg_latency_ms ?? 0) }}ms</div>
-            <div class="mt-1 text-xs text-gray-500">per tool call inspection · p95: {{ Math.round(metrics.p95_latency_ms ?? 0) }}ms</div>
-          </div>
-
-        </section>
-
-        <!-- ── Fix 5: Before/After ASF comparison ── -->
-        <section class="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-sm font-semibold text-gray-300">Impact: With ASF vs Without ASF</h2>
-            <span class="text-xs text-gray-600">Baseline assumes unprotected agent with no security controls</span>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div class="bg-green-900/20 border border-green-800/40 rounded-lg p-3">
-              <div class="text-xs font-semibold text-green-400 mb-2 flex items-center gap-1">
-                <span>✓</span> With ASF (current)
-              </div>
-              <div class="space-y-1.5 text-sm">
-                <div class="flex justify-between">
-                  <span class="text-gray-400">Threats blocked</span>
-                  <span class="text-green-400 font-semibold tabular-nums">{{ metrics.blocked_count ?? 0 }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-400">HITL escalations</span>
-                  <span class="text-yellow-400 font-semibold tabular-nums">{{ metrics.hitl_count ?? 0 }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-400">Avg security overhead</span>
-                  <span class="text-gray-200 font-semibold">+{{ Math.round(metrics.avg_latency_ms ?? 0) }}ms/call</span>
-                </div>
-              </div>
-            </div>
-            <div class="bg-red-900/20 border border-red-800/40 rounded-lg p-3">
-              <div class="text-xs font-semibold text-red-400 mb-2 flex items-center gap-1">
-                <span>✗</span> Without ASF (baseline)
-              </div>
-              <div class="space-y-1.5 text-sm">
-                <div class="flex justify-between">
-                  <span class="text-gray-400">Threats blocked</span>
-                  <span class="text-red-500 font-semibold tabular-nums">0</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-400">HITL escalations</span>
-                  <span class="text-gray-500 font-semibold tabular-nums">0</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-400">Latency overhead</span>
-                  <span class="text-gray-200 font-semibold">0ms</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <p class="text-xs text-gray-600 mt-2">
-            {{ metrics.blocked_count ?? 0 }} additional threats would have reached your agents undetected without ASF.
-            See the unprotected target in the evaluation suite for empirical comparison.
-          </p>
-        </section>
-
-        <!-- ── EU AI Act + Timeline ── -->
-        <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div class="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-semibold">EU AI Act Compliance</h2>
-              <span class="text-xs text-gray-500">Click an article to see correlated events</span>
-            </div>
-            <div class="overflow-x-auto">
-              <table class="w-full text-sm">
-                <thead class="text-gray-400 border-b border-gray-800">
-                  <tr>
-                    <th class="py-2 text-left font-medium">Article</th>
-                    <th class="py-2 text-left font-medium">Control</th>
-                    <th class="py-2 text-right font-medium">Events</th>
-                    <th class="py-2 text-right font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <template v-for="item in compliance" :key="item.article">
-                    <tr
-                      @click="toggleArticle(item.article)"
-                      class="border-b border-gray-800/70 hover:bg-gray-800/50 cursor-pointer transition-colors"
-                      :class="expandedArticle === item.article ? 'bg-gray-800/40' : ''"
-                    >
-                      <td class="py-3 text-gray-100 font-medium">
-                        <span class="flex items-center gap-1">
-                          <span class="text-gray-500 text-xs">{{ expandedArticle === item.article ? '▼' : '▶' }}</span>
-                          {{ item.article }}
-                        </span>
-                      </td>
-                      <td class="py-3">
-                        <div>{{ item.control }}</div>
-                        <div class="text-xs text-gray-500">{{ item.description }}</div>
-                      </td>
-                      <td class="py-3 text-right tabular-nums">{{ item.event_count }}</td>
-                      <td class="py-3 text-right">
-                        <span class="px-2 py-1 rounded text-xs" :class="item.event_count > 0 ? 'bg-green-900/50 text-green-300' : 'bg-gray-800 text-gray-400'">
-                          {{ item.status }}
-                        </span>
-                      </td>
-                    </tr>
-                    <tr v-if="expandedArticle === item.article">
-                      <td colspan="4" class="bg-gray-950/80 p-0">
-                        <div class="p-4 space-y-2">
-                          <div v-if="loadingArticle" class="text-sm text-gray-400">Loading events…</div>
-                          <div v-else-if="articleEvents.length === 0" class="text-sm text-gray-500">No events found for this article.</div>
-                          <div v-for="event in articleEvents" :key="event.event_id" class="border-l-2 pl-3 py-2" :class="borderClass(event)">
-                            <div class="flex flex-wrap items-center gap-2">
-                              <span class="font-mono text-xs text-gray-400">{{ timeOnly(event.timestamp) }}</span>
-                              <span class="text-xs font-medium text-gray-200">{{ event.tool_name || event.action }}</span>
-                              <span class="px-1.5 py-0.5 rounded text-xs font-semibold" :class="verdictBadgeClass(event)">{{ event.verdict || event.outcome }}</span>
-                              <span class="px-2 py-0.5 rounded-full text-xs font-medium" :class="stageBadgeClass(event.stage)">{{ event.stage }}</span>
-                              <span v-if="event.latency_ms != null" class="text-xs text-gray-500">{{ event.latency_ms }}ms</span>
-                            </div>
-                            <div class="mt-1 text-xs text-gray-400">{{ truncate(event.reason, 120) }}</div>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-semibold">Historical Timeline</h2>
-              <span class="text-xs text-gray-500">{{ events.length }} recent</span>
-            </div>
-            <canvas id="timelineChart" height="220"></canvas>
-          </div>
-        </section>
-
-        <!-- ── Fix 4: Human Oversight Queue (Art. 14) ── -->
-        <section class="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <div class="flex items-center gap-3 mb-4">
-            <h2 class="text-lg font-semibold">Human Oversight Queue</h2>
-            <span class="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">Art. 14</span>
-          </div>
-
-          <!-- Yellow banner: pending requests -->
-          <div
-            v-if="hitlEvents.length > 0"
-            class="flex items-center gap-2 px-4 py-3 rounded-lg bg-yellow-900/30 border border-yellow-700/50 mb-4"
-          >
-            <span class="text-yellow-400 text-lg">⚠</span>
-            <span class="text-yellow-300 font-medium">
-              {{ hitlEvents.length }} request{{ hitlEvents.length === 1 ? '' : 's' }} pending human review in the last 24 hours
+        <!-- Fix 7: Topbar -->
+        <header class="topbar">
+          <div class="topbar-title">ASF Compliance Dashboard</div>
+          <div class="topbar-actions">
+            <span class="topbar-refresh">
+              Last refresh: {{ lastRefresh || 'pending' }} · polling every 5s
             </span>
+            <button class="theme-btn" @click="toggleTheme"
+                    :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'">
+              <span v-if="isDark">☀</span><span v-else>🌙</span>
+            </button>
           </div>
+        </header>
 
-          <!-- Green banner: no pending -->
-          <div
-            v-else
-            class="flex items-center gap-2 px-4 py-3 rounded-lg bg-green-900/30 border border-green-700/50 mb-4"
-          >
-            <span class="text-green-400 text-lg">✓</span>
-            <span class="text-green-300 font-medium">No requests pending human review in the last 24 hours</span>
-          </div>
+        <!-- Main scrollable content -->
+        <main style="padding:24px;flex:1;">
+          <div style="max-width:1280px;margin:0 auto;display:flex;flex-direction:column;gap:24px;">
 
-          <!-- Pending events list -->
-          <div v-if="hitlEvents.length > 0" class="space-y-0 divide-y divide-gray-800/60">
-            <div
-              v-for="event in hitlEvents"
-              :key="event.event_id"
-              class="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 py-3 text-sm"
-            >
-              <span class="font-mono text-xs text-gray-400 shrink-0">{{ timeOnly(event.timestamp) }}</span>
-              <span class="text-gray-300 font-medium shrink-0">{{ event.agent_id }}</span>
-              <span class="text-blue-300 shrink-0">{{ event.tool_name || event.action }}</span>
-              <span class="text-gray-400 flex-1 truncate text-xs">{{ truncate(event.reason, 80) }}</span>
-              <div class="flex gap-2 shrink-0">
-                <button
-                  class="px-3 py-1 text-xs rounded bg-green-900/40 text-green-400 border border-green-700/40 cursor-default opacity-50"
-                  title="Read-only — use ASF HITL API to approve"
-                >Approve</button>
-                <button
-                  class="px-3 py-1 text-xs rounded bg-red-900/40 text-red-400 border border-red-700/40 cursor-default opacity-50"
-                  title="Read-only — use ASF HITL API to reject"
-                >Reject</button>
+            <!-- ══ Overview ══ -->
+            <section id="overview">
+
+              <!-- Fix 3 + Fix 4: KPI cards grid -->
+              <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" style="margin-bottom:20px;">
+
+                <!-- Tool Calls Monitored -->
+                <div class="card">
+                  <div class="kpi-label">Tool Calls Monitored (24h)</div>
+                  <div class="kpi-value c-primary">{{ fmtNum(metrics.events_last_24h) }}</div>
+                  <div class="kpi-sub">{{ fmtNum(metrics.total_events) }} total since deployment</div>
+                  <div class="kpi-trend" :class="callsTrend.cls">{{ callsTrend.label }}</div>
+                </div>
+
+                <!-- Block Rate -->
+                <div class="card">
+                  <div class="kpi-label">Block Rate</div>
+                  <div class="kpi-value" :style="blockRateStyle">{{ percent(metrics.detection_rate) }}</div>
+                  <div class="kpi-sub">of tool calls blocked by ASF controls</div>
+                  <div class="kpi-trend neutral">Expected varies by agent / threat profile</div>
+                </div>
+
+                <!-- Security Decisions -->
+                <div class="card">
+                  <div class="kpi-label">Security Decisions</div>
+                  <div style="margin-top:14px;height:6px;border-radius:3px;overflow:hidden;display:flex;background:var(--border);">
+                    <div style="background:var(--danger);"  :style="{ width: ratioWidth(metrics.blocked_count, metrics.allowed_count, true) }"></div>
+                    <div style="background:var(--success);" :style="{ width: ratioWidth(metrics.blocked_count, metrics.allowed_count, false) }"></div>
+                  </div>
+                  <div style="margin-top:10px;display:flex;justify-content:space-between;font-size:0.8125rem;">
+                    <span class="c-danger">{{ fmtNum(metrics.blocked_count) }} threats blocked</span>
+                    <span class="c-success">{{ fmtNum(metrics.allowed_count) }} authorized</span>
+                  </div>
+                </div>
+
+                <!-- Security Overhead -->
+                <div class="card">
+                  <div class="kpi-label">Security Overhead</div>
+                  <div class="kpi-value c-primary">
+                    {{ Math.round(metrics.avg_latency_ms ?? 0) }}<span style="font-size:1.2rem;font-weight:400;color:var(--text-muted);">ms</span>
+                  </div>
+                  <div class="kpi-sub">per tool call inspection</div>
+                  <div class="kpi-trend neutral">p95: {{ Math.round(metrics.p95_latency_ms ?? 0) }}ms</div>
+                </div>
               </div>
-            </div>
-          </div>
-          <p v-if="hitlEvents.length > 0" class="text-xs text-gray-600 mt-3">
-            Approve / Reject actions are read-only in this dashboard. To act on HITL requests, use the ASF HITL API endpoint.
-          </p>
-        </section>
 
-        <!-- ── Sessions Timeline ── -->
-        <section class="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-            <div>
-              <h2 class="text-lg font-semibold">Sessions Timeline</h2>
-              <p class="text-sm text-gray-400">Sessions are reconstructed from consecutive agent events within 30 seconds.</p>
-            </div>
-            <div class="flex items-center gap-3">
-              <div class="flex items-center gap-2">
-                <label class="text-sm text-gray-400 whitespace-nowrap">Agent:</label>
-                <select
-                  v-model="selectedAgent"
-                  @change="refresh()"
-                  class="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-gray-500"
-                >
-                  <option value="">All agents</option>
-                  <option v-for="agentId in agents" :key="agentId" :value="agentId">{{ agentId }}</option>
-                </select>
-              </div>
-              <button @click="refresh" class="px-3 py-2 rounded bg-gray-800 hover:bg-gray-700 text-sm">Refresh</button>
-            </div>
-          </div>
-
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead class="text-gray-400 border-b border-gray-800">
-                <tr>
-                  <th class="py-2 text-left font-medium">Session</th>
-                  <th class="py-2 text-left font-medium">Agent</th>
-                  <th class="py-2 text-left font-medium">Start</th>
-                  <th class="py-2 text-right font-medium">Duration</th>
-                  <th class="py-2 text-right font-medium">Tool Calls</th>
-                  <th class="py-2 text-right font-medium">Blocked</th>
-                  <th class="py-2 text-right font-medium">Allowed</th>
-                </tr>
-              </thead>
-              <tbody>
-                <template v-for="session in sessions" :key="session.session_id">
-                  <tr @click="toggleSession(session.session_id)" class="border-b border-gray-800/70 hover:bg-gray-800/50 cursor-pointer">
-                    <td class="py-3 font-mono text-xs">{{ truncate(session.session_id, 28) }}</td>
-                    <td class="py-3">{{ session.agent_id }}</td>
-                    <td class="py-3 text-gray-300">{{ formatTime(session.start_time) }}</td>
-                    <td class="py-3 text-right tabular-nums">{{ session.duration_ms }}ms</td>
-                    <td class="py-3 text-right tabular-nums">{{ session.total_events }}</td>
-                    <td class="py-3 text-right text-red-400 tabular-nums">{{ session.blocked_count }}</td>
-                    <td class="py-3 text-right text-green-400 tabular-nums">{{ session.allowed_count }}</td>
-                  </tr>
-
-                  <!-- Session drill-down (Fix 6 + Fix 7) -->
-                  <tr v-if="expandedSession === session.session_id">
-                    <td colspan="7" class="bg-gray-950/80 p-0">
-                      <div class="p-4 space-y-2">
-
-                        <!-- Fix 7: Architectural limitation note -->
-                        <div class="text-xs text-gray-600 italic border-l-2 border-gray-700 pl-3 mb-3">
-                          Showing ASF-intercepted tool calls only. Agent reasoning steps (LLM turns) are not
-                          captured by ASF — ASF operates at the tool call boundary.
-                        </div>
-
-                        <!-- Fix 6: Session-level agent info header -->
-                        <div v-if="expandedSessionInfo" class="text-xs bg-gray-900/60 border border-gray-800 rounded px-3 py-2 mb-3 flex flex-wrap gap-x-3 gap-y-1">
-                          <span class="font-medium text-gray-300">{{ expandedSessionInfo.agentId }}</span>
-                          <span class="text-gray-600">·</span>
-                          <span class="text-gray-400">{{ expandedSessionInfo.framework }}</span>
-                          <span class="text-gray-600">·</span>
-                          <span class="text-gray-400">Agent model: <span class="text-gray-300">{{ expandedSessionInfo.model }}</span></span>
-                        </div>
-
-                        <div v-if="loadingSession" class="text-sm text-gray-400">Loading session events…</div>
-                        <div v-else-if="sessionEvents.length === 0" class="text-sm text-gray-500">No events found.</div>
-
-                        <div v-for="event in sessionEvents" :key="event.event_id" class="border-l-2 pl-4 py-2" :class="borderClass(event)">
-                          <!-- Header row: timestamp | tool | verdict | stage | latency -->
-                          <div class="flex flex-wrap items-center gap-2">
-                            <span class="font-mono text-xs text-gray-400">{{ timeOnly(event.timestamp) }}</span>
-                            <span class="text-sm font-medium text-gray-200">{{ event.tool_name || event.action }}</span>
-                            <span class="px-1.5 py-0.5 rounded text-xs font-bold" :class="verdictBadgeClass(event)">{{ event.verdict || event.outcome }}</span>
-                            <span class="px-2 py-0.5 rounded-full text-xs font-medium" :class="stageBadgeClass(event.stage)">{{ event.stage }}</span>
-                            <span v-if="event.latency_ms != null" class="text-xs text-gray-500">{{ event.latency_ms }}ms</span>
-                          </div>
-                          <!-- Reason -->
-                          <div class="mt-1 text-sm text-gray-300">
-                            <span class="text-gray-500">Reason:</span>
-                            {{ truncate(event.reason, 120) }}
-                            <span
-                              v-if="event.reason && event.reason.length > 120"
-                              class="text-blue-400 cursor-pointer ml-1"
-                              @click.stop="expandReason(event.event_id)"
-                            >{{ expandedReasons.has(event.event_id) ? 'less' : 'more' }}</span>
-                          </div>
-                          <div v-if="expandedReasons.has(event.event_id)" class="mt-1 text-sm text-gray-300">{{ event.reason }}</div>
-                          <!-- Meta row (Fix 6: renamed Security model → ASF security model) -->
-                          <div class="mt-1.5 flex flex-wrap gap-3 text-xs text-gray-500">
-                            <div v-if="event.eu_ai_act_article">
-                              <span class="text-gray-600">EU AI Act:</span>
-                              {{ event.eu_ai_act_article }}{{ event.eu_ai_act_control ? ' – ' + event.eu_ai_act_control : '' }}
-                            </div>
-                            <div><span class="text-gray-600">ASF security model:</span> {{ event.security_model || 'not recorded' }}</div>
-                            <div v-if="event.confidence != null"><span class="text-gray-600">Confidence:</span> {{ (event.confidence * 100).toFixed(0) }}%</div>
-                          </div>
-                        </div>
-
+              <!-- Fix 5: Before/After comparison -->
+              <div class="card">
+                <div class="section-hdr">
+                  <span class="section-title" style="font-size:0.875rem;">Impact: With ASF vs Without ASF</span>
+                  <span class="section-sub">Baseline assumes no security controls</span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div class="cmp-good">
+                    <div style="font-size:0.75rem;font-weight:600;color:var(--success);margin-bottom:10px;">✓ With ASF (current)</div>
+                    <div style="display:flex;flex-direction:column;gap:7px;font-size:0.875rem;">
+                      <div class="flex justify-between">
+                        <span class="c-secondary">Threats blocked</span>
+                        <span class="c-success mono">{{ fmtNum(metrics.blocked_count) }}</span>
                       </div>
-                    </td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
-          </div>
-        </section>
+                      <div class="flex justify-between">
+                        <span class="c-secondary">HITL escalations</span>
+                        <span class="mono" style="color:var(--warning);font-weight:600;">{{ metrics.hitl_count ?? 0 }}</span>
+                      </div>
+                      <div class="flex justify-between">
+                        <span class="c-secondary">Avg overhead</span>
+                        <span class="c-primary mono">+{{ Math.round(metrics.avg_latency_ms ?? 0) }}ms/call</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="cmp-bad">
+                    <div style="font-size:0.75rem;font-weight:600;color:var(--danger);margin-bottom:10px;">✗ Without ASF (baseline)</div>
+                    <div style="display:flex;flex-direction:column;gap:7px;font-size:0.875rem;">
+                      <div class="flex justify-between">
+                        <span class="c-secondary">Threats blocked</span>
+                        <span class="c-danger mono">0</span>
+                      </div>
+                      <div class="flex justify-between">
+                        <span class="c-secondary">HITL escalations</span>
+                        <span class="c-muted mono">0</span>
+                      </div>
+                      <div class="flex justify-between">
+                        <span class="c-secondary">Latency overhead</span>
+                        <span class="c-primary mono">0ms</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <p class="c-muted" style="font-size:0.75rem;margin-top:10px;">
+                  {{ fmtNum(metrics.blocked_count) }} additional threats would have reached your agents undetected without ASF.
+                  See the evaluation suite for empirical comparison with the unprotected target.
+                </p>
+              </div>
+            </section>
 
-      </main>
-    </div>
+            <!-- ══ EU AI Act + Timeline ══ -->
+            <section id="compliance" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+              <!-- EU AI Act table -->
+              <div class="card lg:col-span-2" style="padding:20px;">
+                <div class="section-hdr">
+                  <span class="section-title">EU AI Act Compliance</span>
+                  <span class="section-sub">Click an article to see correlated events</span>
+                </div>
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Article</th>
+                      <th>Control</th>
+                      <th class="r">Events</th>
+                      <th class="r">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template v-for="item in compliance" :key="item.article">
+                      <tr @click="toggleArticle(item.article)"
+                          :style="expandedArticle === item.article ? 'background:var(--bg-hover)' : ''">
+                        <td style="font-weight:600;">
+                          <span style="display:flex;align-items:center;gap:5px;">
+                            <span class="c-muted" style="font-size:0.7rem;width:10px;">{{ expandedArticle === item.article ? '▼' : '▶' }}</span>
+                            {{ item.article }}
+                          </span>
+                        </td>
+                        <td>
+                          <div style="font-weight:500;">{{ item.control }}</div>
+                          <div class="c-muted" style="font-size:0.75rem;margin-top:1px;">{{ item.description }}</div>
+                        </td>
+                        <td class="r td-mono">{{ item.event_count.toLocaleString() }}</td>
+                        <td class="r">
+                          <span :class="item.event_count > 0 ? 'badge badge-allow' : 'badge badge-neutral'">
+                            {{ item.status }}
+                          </span>
+                        </td>
+                      </tr>
+                      <tr v-if="expandedArticle === item.article">
+                        <td colspan="4" style="padding:0;background:var(--bg-secondary);">
+                          <div style="padding:12px 16px;">
+                            <div v-if="loadingArticle" class="c-muted" style="font-size:0.875rem;">Loading events…</div>
+                            <div v-else-if="articleEvents.length === 0" class="c-muted" style="font-size:0.875rem;">No events found.</div>
+                            <div v-for="ev in articleEvents" :key="ev.event_id"
+                                 class="ev-row" :class="evRowClass(ev)" style="margin-bottom:5px;">
+                              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:7px;">
+                                <span class="mono c-muted" style="font-size:0.78rem;">{{ timeOnly(ev.timestamp) }}</span>
+                                <span style="font-weight:500;font-size:0.875rem;">{{ ev.tool_name || ev.action }}</span>
+                                <span :class="verdictBadgeClass(ev)">{{ ev.verdict || ev.outcome }}</span>
+                                <span :class="stageBadgeClass(ev.stage)">{{ ev.stage }}</span>
+                                <span v-if="ev.latency_ms != null" class="mono c-muted" style="font-size:0.78rem;">{{ ev.latency_ms }}ms</span>
+                              </div>
+                              <div class="c-muted" style="margin-top:3px;font-size:0.8rem;">{{ truncate(ev.reason, 120) }}</div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Historical Timeline chart -->
+              <div class="card" style="padding:20px;">
+                <div class="section-hdr">
+                  <span class="section-title">Historical Timeline</span>
+                  <span class="section-sub">{{ events.length }} events</span>
+                </div>
+                <canvas id="timelineChart"></canvas>
+              </div>
+            </section>
+
+            <!-- ══ HITL Queue ══ -->
+            <section id="hitl">
+              <div class="card" style="padding:20px;">
+                <div class="section-hdr">
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <span class="section-title">Human Oversight Queue</span>
+                    <span class="badge badge-neutral" style="font-size:0.65rem;">Art. 14</span>
+                  </div>
+                </div>
+
+                <div v-if="hitlEvents.length > 0" class="hitl-banner" style="margin-bottom:16px;">
+                  ⚠ {{ hitlEvents.length }} request{{ hitlEvents.length === 1 ? '' : 's' }} pending human review in the last 24 hours
+                </div>
+                <div v-else class="hitl-banner-ok" style="margin-bottom:16px;">
+                  ✓ No requests pending human review in the last 24 hours
+                </div>
+
+                <div v-if="hitlEvents.length > 0">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Time</th>
+                        <th>Agent</th>
+                        <th>Tool</th>
+                        <th>Reason</th>
+                        <th>Stage</th>
+                        <th class="r">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="ev in hitlEvents" :key="ev.event_id" style="cursor:default;">
+                        <td class="td-mono">{{ timeOnly(ev.timestamp) }}</td>
+                        <td style="font-weight:500;">{{ ev.agent_id }}</td>
+                        <td class="c-accent">{{ ev.tool_name || ev.action }}</td>
+                        <td class="c-muted" style="font-size:0.8125rem;max-width:240px;">{{ truncate(ev.reason, 55) }}</td>
+                        <td><span :class="stageBadgeClass(ev.stage)">{{ ev.stage }}</span></td>
+                        <td class="r">
+                          <div style="display:inline-flex;gap:6px;">
+                            <button class="badge badge-allow" style="cursor:default;opacity:.5;" title="Use ASF HITL API to approve">Approve</button>
+                            <button class="badge badge-deny"  style="cursor:default;opacity:.5;" title="Use ASF HITL API to reject">Reject</button>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <p class="c-muted" style="font-size:0.75rem;margin-top:12px;">
+                    Approve / Reject are read-only in this dashboard. Use the ASF HITL API endpoint to act on pending requests.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <!-- ══ Sessions ══ -->
+            <section id="sessions">
+              <div class="card" style="padding:20px;">
+                <div class="section-hdr">
+                  <div>
+                    <div class="section-title">Sessions Timeline</div>
+                    <div class="section-sub" style="margin-top:2px;">Consecutive events within 30 seconds grouped as sessions</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="display:flex;align-items:center;gap:7px;">
+                      <label class="c-muted" style="font-size:0.8125rem;white-space:nowrap;">Agent:</label>
+                      <select v-model="selectedAgent" @change="refresh()"
+                              style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:0.8125rem;color:var(--text-primary);cursor:pointer;outline:none;">
+                        <option value="">All agents</option>
+                        <option v-for="a in agents" :key="a" :value="a">{{ a }}</option>
+                      </select>
+                    </div>
+                    <button @click="refresh()"
+                            style="padding:6px 14px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border);font-size:0.8125rem;color:var(--text-secondary);cursor:pointer;">
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Session</th>
+                      <th>Agent</th>
+                      <th>Start</th>
+                      <th class="r">Duration</th>
+                      <th class="r">Calls</th>
+                      <th class="r">Blocked</th>
+                      <th class="r">Allowed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template v-for="session in sessions" :key="session.session_id">
+                      <tr @click="toggleSession(session.session_id)">
+                        <td class="td-mono">{{ truncate(session.session_id, 26) }}</td>
+                        <td style="font-weight:500;">{{ session.agent_id }}</td>
+                        <td class="td-mono">{{ formatTime(session.start_time) }}</td>
+                        <td class="r td-mono">{{ session.duration_ms.toLocaleString() }}ms</td>
+                        <td class="r td-mono">{{ session.total_events }}</td>
+                        <td class="r mono c-danger">{{ session.blocked_count || '–' }}</td>
+                        <td class="r mono c-success">{{ session.allowed_count || '–' }}</td>
+                      </tr>
+
+                      <!-- Session drill-down -->
+                      <tr v-if="expandedSession === session.session_id"
+                          style="background:var(--bg-secondary) !important;cursor:default;">
+                        <td colspan="7" style="padding:0;">
+                          <div style="padding:16px 20px;">
+
+                            <!-- Fix 7: Arch limitation note -->
+                            <div class="c-muted" style="font-size:0.75rem;font-style:italic;border-left:3px solid var(--border);padding-left:10px;margin-bottom:12px;line-height:1.55;">
+                              Showing ASF-intercepted tool calls only. Agent reasoning steps (LLM turns)
+                              are not captured — ASF operates at the tool call boundary.
+                            </div>
+
+                            <!-- Fix 6: Agent info header -->
+                            <div v-if="expandedSessionInfo"
+                                 style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:0.8125rem;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                              <span style="font-weight:600;">{{ expandedSessionInfo.agentId }}</span>
+                              <span class="c-muted">·</span>
+                              <span class="c-secondary">{{ expandedSessionInfo.framework }}</span>
+                              <span class="c-muted">·</span>
+                              <span class="c-secondary">Agent model:
+                                <span class="c-primary">{{ expandedSessionInfo.model }}</span>
+                              </span>
+                            </div>
+
+                            <div v-if="loadingSession" class="c-muted" style="font-size:0.875rem;">Loading session events…</div>
+                            <div v-else-if="sessionEvents.length === 0" class="c-muted" style="font-size:0.875rem;">No events found.</div>
+
+                            <div v-for="ev in sessionEvents" :key="ev.event_id"
+                                 class="ev-row" :class="evRowClass(ev)">
+                              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
+                                <span class="mono c-muted" style="font-size:0.78rem;">{{ timeOnly(ev.timestamp) }}</span>
+                                <span style="font-weight:600;font-size:0.875rem;">{{ ev.tool_name || ev.action }}</span>
+                                <span :class="verdictBadgeClass(ev)">{{ ev.verdict || ev.outcome }}</span>
+                                <span :class="stageBadgeClass(ev.stage)">{{ ev.stage }}</span>
+                                <span v-if="ev.latency_ms != null" class="mono c-muted" style="font-size:0.78rem;">{{ ev.latency_ms }}ms</span>
+                              </div>
+                              <div style="margin-top:5px;font-size:0.8125rem;">
+                                <span class="c-muted">Reason: </span>
+                                <span class="c-secondary">{{ truncate(ev.reason, 120) }}</span>
+                                <span v-if="ev.reason && ev.reason.length > 120"
+                                      class="c-accent" style="cursor:pointer;font-size:0.75rem;margin-left:4px;"
+                                      @click.stop="expandReason(ev.event_id)">
+                                  {{ expandedReasons.has(ev.event_id) ? 'less' : 'more' }}
+                                </span>
+                              </div>
+                              <div v-if="expandedReasons.has(ev.event_id)" class="c-secondary" style="margin-top:3px;font-size:0.8125rem;">{{ ev.reason }}</div>
+                              <div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:12px;font-size:0.75rem;color:var(--text-muted);">
+                                <span v-if="ev.eu_ai_act_article">EU AI Act: {{ ev.eu_ai_act_article }}{{ ev.eu_ai_act_control ? ' – ' + ev.eu_ai_act_control : '' }}</span>
+                                <span>ASF security model: {{ ev.security_model || 'not recorded' }}</span>
+                                <span v-if="ev.confidence != null">Confidence: {{ (ev.confidence * 100).toFixed(0) }}%</span>
+                              </div>
+                            </div>
+
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+          </div><!-- /max-width -->
+        </main>
+      </div><!-- /content-wrapper -->
+    </div><!-- /app-layout -->
 
     <script>
       const { createApp } = Vue;
@@ -382,73 +832,104 @@
             loadingArticle: false,
             lastRefresh: '',
             chart: null,
+            activeSection: 'overview',
+            isDark: document.documentElement.classList.contains('dark'),
           };
         },
+
         computed: {
-          blockRateClass() {
-            const rate = this.metrics.detection_rate || 0;
-            if (rate > 0.8) return 'text-red-400';
-            if (rate < 0.5) return 'text-green-400';
-            return 'text-yellow-400';
+          blockRateStyle() {
+            const r = this.metrics.detection_rate || 0;
+            if (r > 0.8) return 'color:var(--danger)';
+            if (r < 0.5) return 'color:var(--success)';
+            return 'color:var(--warning)';
+          },
+          callsTrend() {
+            const total   = this.metrics.total_events    || 1;
+            const last24h = this.metrics.events_last_24h || 0;
+            const avgDay  = total / 30;
+            const ratio   = last24h / (avgDay || 1);
+            if (ratio > 1.2) return { label: `↑ ${Math.round((ratio - 1) * 100)}% above daily avg`, cls: 'up' };
+            if (ratio < 0.8) return { label: `↓ ${Math.round((1 - ratio) * 100)}% below daily avg`, cls: 'down' };
+            return { label: '→ near daily average', cls: 'neutral' };
           },
           expandedSessionInfo() {
             if (!this.expandedSession) return null;
-            const session = this.sessions.find(s => s.session_id === this.expandedSession);
-            if (!session) return null;
-            const agentId = session.agent_id;
-            if (agentId.includes('smolagents')) {
-              return { agentId, framework: 'ToolCallingAgent (smolagents)', model: 'gemma2:2b via Ollama' };
-            }
-            if (agentId.includes('asf-eval')) {
-              return { agentId, framework: 'LangGraph ReAct', model: 'not recorded' };
-            }
-            if (agentId.includes('openhands')) {
-              return { agentId, framework: 'OpenHands CodeAct', model: 'not recorded' };
-            }
-            if (agentId.includes('pyrit')) {
-              return { agentId, framework: 'PyRIT red-team', model: 'not recorded' };
-            }
-            return { agentId, framework: 'unknown framework', model: 'not recorded' };
+            const s = this.sessions.find(x => x.session_id === this.expandedSession);
+            if (!s) return null;
+            const id = s.agent_id;
+            if (id.includes('smolagents'))  return { agentId: id, framework: 'ToolCallingAgent (smolagents)', model: 'gemma2:2b via Ollama' };
+            if (id.includes('asf-eval'))    return { agentId: id, framework: 'LangGraph ReAct',              model: 'not recorded' };
+            if (id.includes('openhands'))   return { agentId: id, framework: 'OpenHands CodeAct',            model: 'not recorded' };
+            if (id.includes('pyrit'))       return { agentId: id, framework: 'PyRIT red-team',               model: 'not recorded' };
+            if (id.includes('promptfoo'))   return { agentId: id, framework: 'promptfoo eval',               model: 'not recorded' };
+            return { agentId: id, framework: 'unknown framework', model: 'not recorded' };
           },
         },
+
         mounted() {
           this.refresh();
           setInterval(this.refresh, 5000);
+          this.setupScrollSpy();
         },
+
         methods: {
+          /* ── API ── */
           async fetchJson(path) {
-            const response = await fetch(path);
-            if (!response.ok) throw new Error(`${path} ${response.status}`);
-            return await response.json();
+            const r = await fetch(path);
+            if (!r.ok) throw new Error(`${path} ${r.status}`);
+            return r.json();
           },
+
           async refresh() {
-            const agentParam = this.selectedAgent ? `?agent_id=${encodeURIComponent(this.selectedAgent)}` : '';
+            const ap = this.selectedAgent ? `?agent_id=${encodeURIComponent(this.selectedAgent)}` : '';
             const [metrics, compliance, sessions, events, agents, hitlEvents] = await Promise.all([
-              this.fetchJson(`/api/metrics${agentParam}`),
+              this.fetchJson(`/api/metrics${ap}`),
               this.fetchJson('/api/compliance'),
-              this.fetchJson(`/api/sessions${agentParam}`),
+              this.fetchJson(`/api/sessions${ap}`),
               this.fetchJson('/api/events?limit=200'),
               this.fetchJson('/api/agents'),
               this.fetchJson('/api/hitl'),
             ]);
-            this.metrics = metrics;
-            this.compliance = compliance;
-            this.sessions = sessions;
-            this.events = events;
-            this.agents = agents;
-            this.hitlEvents = hitlEvents;
+            this.metrics     = metrics;
+            this.compliance  = compliance;
+            this.sessions    = sessions;
+            this.events      = events;
+            this.agents      = agents;
+            this.hitlEvents  = hitlEvents;
             this.lastRefresh = new Date().toLocaleTimeString();
             this.renderTimeline();
-            if (this.expandedSession) await this.loadSession(this.expandedSession);
-            if (this.expandedArticle) await this.loadArticle(this.expandedArticle);
+            if (this.expandedSession) this.loadSession(this.expandedSession);
+            if (this.expandedArticle) this.loadArticle(this.expandedArticle);
           },
 
+          /* ── Theme toggle ── */
+          toggleTheme() {
+            this.isDark = !this.isDark;
+            document.documentElement.classList.toggle('dark', this.isDark);
+            localStorage.setItem('asf-theme', this.isDark ? 'dark' : 'light');
+            this.$nextTick(() => this.renderTimeline());
+          },
+
+          /* ── Scroll spy ── */
+          setupScrollSpy() {
+            const ids = ['overview', 'compliance', 'hitl', 'sessions'];
+            const obs = new IntersectionObserver(
+              entries => entries.forEach(e => { if (e.isIntersecting) this.activeSection = e.target.id; }),
+              { threshold: 0.15, rootMargin: '-70px 0px -55% 0px' }
+            );
+            ids.forEach(id => { const el = document.getElementById(id); if (el) obs.observe(el); });
+          },
+
+          scrollTo(id) {
+            this.activeSection = id;
+            document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+          },
+
+          /* ── Session drill-down ── */
           async toggleSession(sessionId) {
             if (this.expandedSession === sessionId) {
-              this.expandedSession = null;
-              this.sessionEvents = [];
-              this.expandedReasons = new Set();
-              return;
+              this.expandedSession = null; this.sessionEvents = []; this.expandedReasons = new Set(); return;
             }
             this.expandedSession = sessionId;
             this.expandedReasons = new Set();
@@ -456,115 +937,101 @@
           },
           async loadSession(sessionId) {
             this.loadingSession = true;
-            try {
-              this.sessionEvents = await this.fetchJson(`/api/sessions/${encodeURIComponent(sessionId)}`);
-            } finally {
-              this.loadingSession = false;
-            }
+            try { this.sessionEvents = await this.fetchJson(`/api/sessions/${encodeURIComponent(sessionId)}`); }
+            finally { this.loadingSession = false; }
           },
 
+          /* ── Article drill-down ── */
           async toggleArticle(article) {
-            if (this.expandedArticle === article) {
-              this.expandedArticle = null;
-              this.articleEvents = [];
-              return;
-            }
+            if (this.expandedArticle === article) { this.expandedArticle = null; this.articleEvents = []; return; }
             this.expandedArticle = article;
             await this.loadArticle(article);
           },
           async loadArticle(article) {
             this.loadingArticle = true;
-            try {
-              this.articleEvents = await this.fetchJson(`/api/compliance/${encodeURIComponent(article)}`);
-            } finally {
-              this.loadingArticle = false;
-            }
+            try { this.articleEvents = await this.fetchJson(`/api/compliance/${encodeURIComponent(article)}`); }
+            finally { this.loadingArticle = false; }
           },
 
-          expandReason(eventId) {
-            const next = new Set(this.expandedReasons);
-            if (next.has(eventId)) next.delete(eventId);
-            else next.add(eventId);
-            this.expandedReasons = next;
+          expandReason(id) {
+            const s = new Set(this.expandedReasons);
+            s.has(id) ? s.delete(id) : s.add(id);
+            this.expandedReasons = s;
           },
 
+          /* ── Chart ── */
           renderTimeline() {
             const buckets = {};
-            for (const event of this.events) {
-              const key = (event.timestamp || '').slice(0, 13) || 'unknown';
-              buckets[key] = (buckets[key] || 0) + 1;
+            for (const e of this.events) {
+              const k = (e.timestamp || '').slice(0, 13) || 'unknown';
+              buckets[k] = (buckets[k] || 0) + 1;
             }
             const labels = Object.keys(buckets).sort();
-            const data = labels.map((label) => buckets[label]);
-            const ctx = document.getElementById('timelineChart');
+            const data   = labels.map(l => buckets[l]);
+            const ctx    = document.getElementById('timelineChart');
             if (!ctx) return;
             if (this.chart) this.chart.destroy();
+            const dark = document.documentElement.classList.contains('dark');
+            const tick = dark ? '#64748b' : '#9ca3af';
+            const grid = dark ? '#1e2737' : '#f3f4f6';
             this.chart = new Chart(ctx, {
               type: 'bar',
-              data: {
-                labels,
-                datasets: [{ label: 'Events', data, backgroundColor: '#2563eb' }],
-              },
+              data: { labels, datasets: [{ label: 'Events', data, backgroundColor: '#3b82f6', borderRadius: 3 }] },
               options: {
                 responsive: true,
-                plugins: { legend: { labels: { color: '#d1d5db' } } },
+                plugins: { legend: { labels: { color: dark ? '#94a3b8' : '#6b7280', font: { family: 'Inter', size: 12 } } } },
                 scales: {
-                  x: { ticks: { color: '#9ca3af', maxRotation: 0 }, grid: { color: '#1f2937' } },
-                  y: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } },
+                  x: { ticks: { color: tick, maxRotation: 0, font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: grid } },
+                  y: { ticks: { color: tick, font: { family: 'Inter', size: 11 } }, grid: { color: grid } },
                 },
               },
             });
           },
 
-          percent(value) {
-            return `${Math.round((value || 0) * 100)}%`;
+          /* ── Formatting ── */
+          fmtNum(v)   { return (v ?? 0).toLocaleString(); },
+          percent(v)  { return `${Math.round((v || 0) * 100)}%`; },
+          ratioWidth(blocked, allowed, isBlocked) {
+            const t = (blocked || 0) + (allowed || 0);
+            if (!t) return isBlocked ? '0%' : '100%';
+            return `${((isBlocked ? blocked : allowed) / t) * 100}%`;
           },
-          ratioWidth(blocked, allowed, blockedPart) {
-            const total = (blocked || 0) + (allowed || 0);
-            if (!total) return blockedPart ? '0%' : '100%';
-            return `${((blockedPart ? blocked : allowed) / total) * 100}%`;
+          truncate(v, n) {
+            v = v || ''; return v.length > n ? v.slice(0, n) + '…' : v;
           },
-          truncate(value, length) {
-            value = value || '';
-            return value.length > length ? `${value.slice(0, length)}…` : value;
+          formatTime(v) {
+            if (!v) return ''; return v.replace('T', ' ').slice(0, 19);
           },
-          formatTime(value) {
-            if (!value) return '';
-            return value.replace('T', ' ').slice(0, 19);
-          },
-          timeOnly(value) {
-            if (!value) return '';
-            const part = value.replace('T', ' ');
-            return part.slice(11, 23) || part.slice(0, 19);
+          timeOnly(v) {
+            if (!v) return ''; const p = v.replace('T', ' '); return p.slice(11, 23) || p.slice(0, 19);
           },
 
-          verdictBadgeClass(event) {
-            const v = event.verdict || event.outcome || '';
-            if (v === 'DENY' || v === 'KILL_SWITCH' || event.outcome === 'KILL_SWITCH' || event.outcome === 'BLOCKED') {
-              return 'bg-red-900/60 text-red-300';
-            }
-            if (v === 'ALLOW' || event.outcome === 'ALLOWED') return 'bg-green-900/60 text-green-300';
-            if (v === 'HITL') return 'bg-yellow-900/60 text-yellow-300';
-            return 'bg-gray-800 text-gray-300';
+          /* ── Badge class helpers ── */
+          verdictBadgeClass(ev) {
+            const v = ev.verdict || ev.outcome || '';
+            if (v === 'DENY' || ev.outcome === 'KILL_SWITCH' || ev.outcome === 'BLOCKED') return 'badge badge-deny';
+            if (v === 'ALLOW' || ev.outcome === 'ALLOWED')  return 'badge badge-allow';
+            if (v === 'HITL')                                return 'badge badge-hitl';
+            return 'badge badge-neutral';
           },
-          borderClass(event) {
-            const v = event.verdict || event.outcome || '';
-            if (v === 'DENY' || v === 'KILL_SWITCH' || event.outcome === 'KILL_SWITCH' || event.outcome === 'BLOCKED') return 'border-red-600';
-            if (v === 'ALLOW' || event.outcome === 'ALLOWED') return 'border-green-600';
-            if (v === 'HITL') return 'border-yellow-500';
-            return 'border-gray-700';
+          evRowClass(ev) {
+            const v = ev.verdict || ev.outcome || '';
+            if (v === 'DENY' || ev.outcome === 'KILL_SWITCH' || ev.outcome === 'BLOCKED') return 'ev-deny';
+            if (v === 'ALLOW' || ev.outcome === 'ALLOWED') return 'ev-allow';
+            if (v === 'HITL')                              return 'ev-hitl';
+            return '';
           },
           stageBadgeClass(stage) {
-            if (!stage) return 'bg-gray-700/50 text-gray-400';
+            if (!stage) return 'badge badge-stage badge-stage-unk';
             const s = stage.toLowerCase();
-            if (s.includes('l1.5')) return 'bg-purple-500/20 text-purple-300 border border-purple-500/30';
-            if (s.includes('stage 2.5') || s.includes('deberta')) return 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30';
-            if (s.includes('stage 2')) return 'bg-blue-500/20 text-blue-300 border border-blue-500/30';
-            if (s.includes('stage 1')) return 'bg-orange-500/20 text-orange-300 border border-orange-500/30';
-            if (s.includes('stage 3') || s.includes('llm')) return 'bg-violet-600/20 text-violet-300 border border-violet-600/30';
-            if (s.includes('output guard')) return 'bg-pink-500/20 text-pink-300 border border-pink-500/30';
-            if (s.includes('prompt guard')) return 'bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30';
-            return 'bg-gray-700/50 text-gray-400';
+            if (s.includes('l1.5'))                         return 'badge badge-stage badge-stage-l15';
+            if (s.includes('stage 2.5') || s.includes('deberta')) return 'badge badge-stage badge-stage-25';
+            if (s.includes('stage 2'))                      return 'badge badge-stage badge-stage-2';
+            if (s.includes('stage 1'))                      return 'badge badge-stage badge-stage-1';
+            if (s.includes('stage 3') || s.includes('llm')) return 'badge badge-stage badge-stage-3';
+            if (s.includes('output guard'))                 return 'badge badge-stage badge-stage-output';
+            if (s.includes('prompt guard'))                 return 'badge badge-stage badge-stage-pg';
+            return 'badge badge-stage badge-stage-unk';
           },
         },
       }).mount('#app');
