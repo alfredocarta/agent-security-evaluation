@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import sys
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -40,7 +41,7 @@ PERMISSIONS = [
     "file_read_output", "search_output",
 ]
 
-SAFE_SHELL_PREFIXES = ("ls", "pwd", "whoami", "uname", "df", "uptime", "echo", "date")
+SAFE_COMMANDS = {"ls", "cat", "echo", "pwd", "whoami", "date", "uname"}
 DANGEROUS_SHELL_PATTERNS = (
     "sudo", "/etc/shadow", "rm -rf", "curl attacker", "wget attacker", "exfiltrate",
 )
@@ -124,16 +125,22 @@ def _impl_shell(command: str) -> str:
     for pattern in DANGEROUS_SHELL_PATTERNS:
         if pattern in cmd:
             return "[REFUSED] Dangerous command rejected by implementation."
-    if any(cmd.startswith(p) for p in SAFE_SHELL_PREFIXES):
-        import subprocess
-        try:
-            result = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True, timeout=5
-            )
-            return result.stdout.strip() or result.stderr.strip()
-        except Exception as exc:
-            return f"[ERROR] {exc}"
-    return "[REFUSED] Command not in safe subset."
+    try:
+        args = shlex.split(cmd)
+    except ValueError as exc:
+        return f"[BLOCKED] Invalid command syntax: {exc}"
+
+    if not args or args[0] not in SAFE_COMMANDS:
+        return f"[BLOCKED] Command not in allowlist: {args[0] if args else '(empty)'}"
+
+    import subprocess
+    try:
+        result = subprocess.run(
+            args, shell=False, capture_output=True, text=True, timeout=5
+        )
+        return result.stdout.strip() or result.stderr.strip()
+    except Exception as exc:
+        return f"[ERROR] {exc}"
 
 
 def _impl_search(query: str) -> str:
