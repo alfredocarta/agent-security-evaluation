@@ -11,7 +11,6 @@
     <!-- Tailwind (layout utilities only; colors come from CSS vars) -->
     <script>tailwind.config = { darkMode: 'class' }</script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 
     <style>
@@ -372,6 +371,37 @@
       .c-warning   { color: var(--warning); }
       .c-accent    { color: var(--accent); }
 
+      /* context banner */
+      .context-banner {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        text-align: left;
+        padding: 8px 0 0 0;
+      }
+
+      /* search input */
+      .search-input {
+        width: 100%;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 7px 12px;
+        font-size: 0.8125rem;
+        color: var(--text-primary);
+        outline: none;
+        margin-bottom: 12px;
+      }
+      .search-input::placeholder { color: var(--text-muted); }
+      .search-input:focus { border-color: var(--accent); }
+
+      /* blue badge for positive configured state */
+      .badge-configured { background: rgba(59,130,246,.12); color: var(--accent); }
+      .dark .badge-configured { background: rgba(59,130,246,.15); color: #60a5fa; }
+
+      /* article progress bar */
+      .art-progress { height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; margin-top: 5px; }
+      .art-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; }
+
       /* scroll target offset */
       section[id] { scroll-margin-top: 72px; }
 
@@ -525,61 +555,18 @@
                 </div>
               </div>
 
-              <!-- Activity Timeline chart -->
-              <div class="card" style="padding:20px;margin-bottom:20px;">
-                <div class="section-hdr">
-                  <span class="section-title">Activity Timeline</span>
-                  <span class="section-sub">Events per hour (last 200 intercepted)</span>
-                </div>
-                <canvas id="timelineChart" height="80"></canvas>
+              <!-- Context banner -->
+              <div class="context-banner">
+                ℹ Data reflects evaluation suite runs. Block rate includes
+                adversarial test scenarios designed to be blocked.
               </div>
 
-              <!-- Fix 5: Before/After comparison -->
-              <div class="card">
-                <div class="section-hdr">
-                  <span class="section-title" style="font-size:0.875rem;">Impact: With ASF vs Without ASF</span>
-                  <span class="section-sub">Baseline assumes no security controls</span>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div class="cmp-good">
-                    <div style="font-size:0.75rem;font-weight:600;color:var(--success);margin-bottom:10px;">✓ With ASF (current)</div>
-                    <div style="display:flex;flex-direction:column;gap:7px;font-size:0.875rem;">
-                      <div class="flex justify-between">
-                        <span class="c-secondary">Threats blocked</span>
-                        <span class="c-success mono">{{ fmtNum(metrics.blocked_count) }}</span>
-                      </div>
-                      <div class="flex justify-between">
-                        <span class="c-secondary">HITL escalations</span>
-                        <span class="mono" style="color:var(--warning);font-weight:600;">{{ metrics.hitl_count ?? 0 }}</span>
-                      </div>
-                      <div class="flex justify-between">
-                        <span class="c-secondary">Avg overhead</span>
-                        <span class="c-primary mono">+{{ Math.round(metrics.avg_latency_ms ?? 0) }}ms/call</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="cmp-bad">
-                    <div style="font-size:0.75rem;font-weight:600;color:var(--danger);margin-bottom:10px;">✗ Without ASF (baseline)</div>
-                    <div style="display:flex;flex-direction:column;gap:7px;font-size:0.875rem;">
-                      <div class="flex justify-between">
-                        <span class="c-secondary">Threats blocked</span>
-                        <span class="c-danger mono">0</span>
-                      </div>
-                      <div class="flex justify-between">
-                        <span class="c-secondary">HITL escalations</span>
-                        <span class="c-muted mono">0</span>
-                      </div>
-                      <div class="flex justify-between">
-                        <span class="c-secondary">Latency overhead</span>
-                        <span class="c-primary mono">0ms</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <p class="c-muted" style="font-size:0.75rem;margin-top:10px;">
-                  {{ fmtNum(metrics.blocked_count) }} additional threats would have reached your agents undetected without ASF.
-                  See the evaluation suite for empirical comparison with the unprotected target.
-                </p>
+              <!-- Fix 3: Compact impact summary bar -->
+              <div style="font-size:0.875rem;color:var(--text-secondary);padding:12px 20px;background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border);line-height:1.6;">
+                ASF protected <strong style="color:var(--text-primary);">{{ fmtNum(metrics.blocked_count) }}</strong> threats ·
+                <strong style="color:var(--text-primary);">{{ metrics.hitl_count ?? 0 }}</strong> HITL escalations ·
+                +<strong style="color:var(--text-primary);">{{ Math.round(metrics.avg_latency_ms ?? 0) }}ms</strong> overhead per call
+                <span style="color:var(--text-muted);"> · vs unprotected baseline: 0 blocks · 0 escalations · 0ms overhead</span>
               </div>
             </section>
 
@@ -608,6 +595,7 @@
                         <td style="font-weight:600;">
                           <span style="display:flex;align-items:center;gap:5px;">
                             <span class="c-muted" style="font-size:0.7rem;width:10px;">{{ expandedArticle === item.article ? '▼' : '▶' }}</span>
+                            <span style="font-size:0.95em;">{{ articleIcon(item.article) }}</span>
                             {{ item.article }}
                           </span>
                         </td>
@@ -615,12 +603,13 @@
                           <div style="font-weight:500;">{{ item.control }}</div>
                           <div class="c-muted" style="font-size:0.75rem;margin-top:1px;">{{ item.description }}</div>
                           <div v-if="item.note" class="c-muted" style="font-size:0.7rem;margin-top:2px;font-style:italic;">{{ item.note }}</div>
+                          <div class="art-progress">
+                            <div class="art-progress-fill" :style="{ width: articleProgress(item.event_count) + '%' }"></div>
+                          </div>
                         </td>
                         <td class="r td-mono">{{ item.event_count.toLocaleString() }}</td>
                         <td class="r">
-                          <span :class="item.event_count > 0 ? 'badge badge-allow' : item.status.startsWith('Configured') ? 'badge badge-neutral' : 'badge badge-neutral'">
-                            {{ item.status }}
-                          </span>
+                          <span :class="articleBadgeClass(item)">{{ item.status }}</span>
                         </td>
                       </tr>
                       <tr v-if="expandedArticle === item.article">
@@ -664,7 +653,7 @@
                   ⚠ {{ hitlEvents.length }} request{{ hitlEvents.length === 1 ? '' : 's' }} pending human review in the last 24 hours
                 </div>
                 <div v-else class="hitl-banner-ok" style="margin-bottom:16px;">
-                  ✓ No requests pending human review in the last 24 hours
+                  ✓ HITL mechanism active · No escalations in the last 24 hours
                 </div>
 
                 <div v-if="hitlEvents.length > 0">
@@ -723,6 +712,10 @@
                   </div>
                 </div>
 
+                <input type="text" v-model="sessionSearch"
+                       placeholder="Search sessions..."
+                       class="search-input">
+
                 <table class="data-table">
                   <thead>
                     <tr>
@@ -736,7 +729,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <template v-for="session in sessions" :key="session.session_id">
+                    <template v-for="session in filteredSessions" :key="session.session_id">
                       <tr @click="toggleSession(session.session_id)">
                         <td class="td-mono">{{ truncate(session.session_id, 26) }}</td>
                         <td style="font-weight:500;">{{ session.agent_id }}</td>
@@ -823,7 +816,6 @@
             metrics: {},
             compliance: [],
             sessions: [],
-            events: [],
             agents: [],
             selectedAgent: '',
             hitlEvents: [],
@@ -835,9 +827,9 @@
             expandedArticle: null,
             loadingArticle: false,
             lastRefresh: '',
-            chart: null,
             activeSection: 'overview',
             isDark: document.documentElement.classList.contains('dark'),
+            sessionSearch: '',
           };
         },
 
@@ -847,6 +839,14 @@
             if (r > 0.8) return 'color:var(--danger)';
             if (r < 0.5) return 'color:var(--success)';
             return 'color:var(--warning)';
+          },
+          filteredSessions() {
+            if (!this.sessionSearch) return this.sessions;
+            const q = this.sessionSearch.toLowerCase();
+            return this.sessions.filter(s =>
+              s.session_id.toLowerCase().includes(q) ||
+              s.agent_id.toLowerCase().includes(q)
+            );
           },
           expandedSessionInfo() {
             if (!this.expandedSession) return null;
@@ -878,22 +878,19 @@
 
           async refresh() {
             const ap = this.selectedAgent ? `?agent_id=${encodeURIComponent(this.selectedAgent)}` : '';
-            const [metrics, compliance, sessions, events, agents, hitlEvents] = await Promise.all([
+            const [metrics, compliance, sessions, agents, hitlEvents] = await Promise.all([
               this.fetchJson(`/api/metrics${ap}`),
               this.fetchJson('/api/compliance'),
               this.fetchJson(`/api/sessions${ap}`),
-              this.fetchJson('/api/events?limit=200'),
               this.fetchJson('/api/agents'),
               this.fetchJson('/api/hitl'),
             ]);
             this.metrics     = metrics;
             this.compliance  = compliance;
             this.sessions    = sessions;
-            this.events      = events;
             this.agents      = agents;
             this.hitlEvents  = hitlEvents;
             this.lastRefresh = new Date().toLocaleTimeString();
-            this.renderTimeline();
             if (this.expandedSession) this.loadSession(this.expandedSession);
             if (this.expandedArticle) this.loadArticle(this.expandedArticle);
           },
@@ -903,17 +900,22 @@
             this.isDark = !this.isDark;
             document.documentElement.classList.toggle('dark', this.isDark);
             localStorage.setItem('asf-theme', this.isDark ? 'dark' : 'light');
-            this.$nextTick(() => this.renderTimeline());
           },
 
           /* ── Scroll spy ── */
           setupScrollSpy() {
-            const ids = ['overview', 'compliance', 'hitl', 'sessions'];
-            const obs = new IntersectionObserver(
-              entries => entries.forEach(e => { if (e.isIntersecting) this.activeSection = e.target.id; }),
-              { threshold: 0.15, rootMargin: '-70px 0px -55% 0px' }
-            );
-            ids.forEach(id => { const el = document.getElementById(id); if (el) obs.observe(el); });
+            const sections = ['overview', 'compliance', 'hitl', 'sessions'];
+            const observer = new IntersectionObserver((entries) => {
+              entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                  this.activeSection = entry.target.id;
+                }
+              });
+            }, { threshold: 0.3, rootMargin: '-10% 0px -60% 0px' });
+            sections.forEach(id => {
+              const el = document.getElementById(id);
+              if (el) observer.observe(el);
+            });
           },
 
           scrollTo(id) {
@@ -954,35 +956,6 @@
             this.expandedReasons = s;
           },
 
-          /* ── Chart ── */
-          renderTimeline() {
-            const buckets = {};
-            for (const e of this.events) {
-              const k = (e.timestamp || '').slice(0, 13) || 'unknown';
-              buckets[k] = (buckets[k] || 0) + 1;
-            }
-            const labels = Object.keys(buckets).sort();
-            const data   = labels.map(l => buckets[l]);
-            const ctx    = document.getElementById('timelineChart');
-            if (!ctx) return;
-            if (this.chart) this.chart.destroy();
-            const dark = document.documentElement.classList.contains('dark');
-            const tick = dark ? '#64748b' : '#9ca3af';
-            const grid = dark ? '#1e2737' : '#f3f4f6';
-            this.chart = new Chart(ctx, {
-              type: 'bar',
-              data: { labels, datasets: [{ label: 'Events', data, backgroundColor: '#3b82f6', borderRadius: 3 }] },
-              options: {
-                responsive: true,
-                plugins: { legend: { labels: { color: dark ? '#94a3b8' : '#6b7280', font: { family: 'Inter', size: 12 } } } },
-                scales: {
-                  x: { ticks: { color: tick, maxRotation: 0, font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: grid } },
-                  y: { ticks: { color: tick, font: { family: 'Inter', size: 11 } }, grid: { color: grid } },
-                },
-              },
-            });
-          },
-
           /* ── Formatting ── */
           fmtNum(v)   { return (v ?? 0).toLocaleString(); },
           percent(v)  { return `${Math.round((v || 0) * 100)}%`; },
@@ -1000,6 +973,24 @@
           },
           timeOnly(v) {
             if (!v) return ''; const p = v.replace('T', ' '); return p.slice(11, 23) || p.slice(0, 19);
+          },
+
+          /* ── Article helpers ── */
+          articleIcon(article) {
+            if (article.includes('9'))  return '🛡';
+            if (article.includes('12')) return '📋';
+            if (article.includes('14')) return '👤';
+            if (article.includes('15')) return '✓';
+            return '';
+          },
+          articleProgress(eventCount) {
+            const total = this.metrics.total_tool_calls || 84;
+            return Math.min(100, Math.round((eventCount / total) * 100));
+          },
+          articleBadgeClass(item) {
+            if (item.event_count > 0) return 'badge badge-allow';
+            if (item.status.startsWith('Configured')) return 'badge badge-configured';
+            return 'badge badge-neutral';
           },
 
           /* ── Badge class helpers ── */
