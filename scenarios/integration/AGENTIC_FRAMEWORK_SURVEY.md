@@ -53,3 +53,15 @@ Date: 2026-05-19
   tool abstractions; ASF can wrap each tool callable before execution.
 - Recommendation: smolagents is the best next target for a minimal external
   agent test because its tool surface is small and it can run with local models.
+
+## CrewAI - Updated finding (2026-05-21)
+
+CrewAI was installed and imported successfully. However, CrewAI requires
+an OpenAI-compatible LLM that generates structured tool call JSON. Local
+models via Ollama (gemma2:2b) do not reliably generate tool calls in the
+format CrewAI expects, causing agents to fail without invoking tools.
+
+Status: installed, not functional with local Ollama models.
+Workaround: would require OpenAI API key or a model specifically fine-tuned
+for function calling (e.g. Mistral with tool use support).
+Integration test falls back to direct ASF payload testing: 4/4, dr=1.0.
