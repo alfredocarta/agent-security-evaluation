@@ -20,6 +20,14 @@ BLOCK_OUTCOMES = {"BLOCKED", "KILL_SWITCH", "OUTPUT_BLOCK"}
 HITL_OUTCOMES = {"HITL_REQUESTED"}
 TERMINAL_OUTCOMES = ALLOW_OUTCOMES | BLOCK_OUTCOMES | HITL_OUTCOMES
 
+EVAL_TOOL_AGENTS = {
+    "pyrit-crescendo-eval-agent",
+    "pyrit-xpia-eval-agent",
+    "garak-debug",
+    "promptfoo-eval-agent",
+    "test-agent",
+}
+
 _ALL_OUTCOMES = object()  # sentinel: every event counts as evidence
 
 ARTICLE_OUTCOMES: dict[str, Any] = {
@@ -267,11 +275,17 @@ async def get_trace_events(trace_id: str) -> list[AuditEvent]:
     return [_normalize_event(row) for row in rows if row.get("trace_id") == trace_id]
 
 
-async def get_sessions(limit: int = 50, agent_id: str | None = None) -> list[SessionSummary]:
+async def get_sessions(
+    limit: int = 50,
+    agent_id: str | None = None,
+    show_eval: bool = False,
+) -> list[SessionSummary]:
     rows = await _fetch_rows()
     sessions: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         if agent_id and row.get("agent_id") != agent_id:
+            continue
+        if not show_eval and row.get("agent_id") in EVAL_TOOL_AGENTS:
             continue
         sessions.setdefault(row["session_id"], []).append(row)
 
@@ -355,15 +369,22 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
     )
 
 
-async def get_agents() -> list[str]:
+async def get_agents(show_eval: bool = False) -> list[str]:
     db_path = get_db_path()
     if not _has_audit_schema(db_path):
         return []
     async with aiosqlite.connect(db_path) as conn:
-        cursor = await conn.execute(
+        query = (
             "SELECT DISTINCT agent_id FROM audit_trail "
-            "WHERE agent_id IS NOT NULL ORDER BY agent_id"
+            "WHERE agent_id IS NOT NULL"
         )
+        params: list[str] = []
+        if not show_eval:
+            placeholders = ",".join("?" for _ in EVAL_TOOL_AGENTS)
+            query += f" AND agent_id NOT IN ({placeholders})"
+            params.extend(sorted(EVAL_TOOL_AGENTS))
+        query += " ORDER BY agent_id"
+        cursor = await conn.execute(query, params)
         rows = await cursor.fetchall()
     return [row[0] for row in rows]
 

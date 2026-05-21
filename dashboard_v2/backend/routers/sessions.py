@@ -13,8 +13,9 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 async def recent_sessions(
     limit: int = Query(default=50, ge=1, le=500),
     agent_id: str | None = Query(default=None),
+    show_eval: bool = Query(default=False),
 ):
-    return await get_sessions(limit=limit, agent_id=agent_id)
+    return await get_sessions(limit=limit, agent_id=agent_id, show_eval=show_eval)
 
 
 @router.get("/{session_id}", response_model=list[AuditEvent])
