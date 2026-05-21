@@ -595,7 +595,6 @@
                         <td style="font-weight:600;">
                           <span style="display:flex;align-items:center;gap:5px;">
                             <span class="c-muted" style="font-size:0.7rem;width:10px;">{{ expandedArticle === item.article ? '▼' : '▶' }}</span>
-                            <span style="font-size:0.95em;">{{ articleIcon(item.article) }}</span>
                             {{ item.article }}
                           </span>
                         </td>
@@ -653,7 +652,7 @@
                   ⚠ {{ hitlEvents.length }} request{{ hitlEvents.length === 1 ? '' : 's' }} pending human review in the last 24 hours
                 </div>
                 <div v-else class="hitl-banner-ok" style="margin-bottom:16px;">
-                  ✓ HITL mechanism active · No escalations in the last 24 hours
+                  HITL mechanism active · No escalations in the last 24 hours
                 </div>
 
                 <div v-if="hitlEvents.length > 0">
@@ -976,13 +975,6 @@
           },
 
           /* ── Article helpers ── */
-          articleIcon(article) {
-            if (article.includes('9'))  return '🛡';
-            if (article.includes('12')) return '📋';
-            if (article.includes('14')) return '👤';
-            if (article.includes('15')) return '✓';
-            return '';
-          },
           articleProgress(eventCount) {
             const total = this.metrics.total_tool_calls || 84;
             return Math.min(100, Math.round((eventCount / total) * 100));
