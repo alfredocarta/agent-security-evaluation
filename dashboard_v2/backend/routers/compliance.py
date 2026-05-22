@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from ..db import EVAL_TOOL_AGENTS, get_compliance_events, get_recent_events, get_total_trace_count
 from ..models import AuditEvent, ComplianceItem
 
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
+ASF_ROOT = Path(os.environ.get("ASF_ROOT", "/Users/alfredo/Projects/agent-security-framework"))
+
 
 VALID_ARTICLES = Literal["Art. 9", "Art. 10", "Art. 12", "Art. 13", "Art. 14", "Art. 15", "Art. 17"]
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -121,6 +125,27 @@ async def compliance():
             note=note,
         ))
     return items
+
+
+@router.get("/agt")
+async def agt_compliance(limit: int = Query(default=1000, ge=1, le=1000)):
+    events = await get_recent_events(limit=limit)
+    try:
+        if str(ASF_ROOT) not in sys.path:
+            sys.path.insert(0, str(ASF_ROOT))
+        from agt_compliance_bridge import AGTComplianceBridge
+
+        bridge = AGTComplianceBridge()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "AGT compliance bridge unavailable",
+                "asf_root": str(ASF_ROOT),
+                "reason": f"{type(exc).__name__}: {exc}",
+            },
+        ) from exc
+    return bridge.generate_compliance_report(events)
 
 
 @router.get("/{article_code}", response_model=list[AuditEvent])
