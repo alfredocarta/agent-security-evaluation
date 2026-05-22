@@ -361,6 +361,38 @@
       .ev-allow { border-left-color: var(--success); }
       .ev-hitl  { border-left-color: var(--warning); }
 
+      .session-timeline {
+        margin: 16px 0;
+      }
+      .session-timeline svg {
+        display: block;
+        width: 100%;
+        height: 84px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow: visible;
+      }
+      .session-timeline-legend {
+        display: flex;
+        gap: 12px;
+        margin-top: 6px;
+        flex-wrap: wrap;
+      }
+      .session-timeline-legend-item {
+        font-size: 0.7rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--text-secondary);
+      }
+      .session-timeline-legend-swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+        display: inline-block;
+      }
+
       /* ── Typography helpers ── */
       .mono { font-family: 'JetBrains Mono', monospace; font-size: 0.875em; }
       .c-primary   { color: var(--text-primary); }
@@ -773,6 +805,43 @@
                             <div v-if="loadingSession" class="c-muted" style="font-size:0.875rem;">Loading session events…</div>
                             <div v-else-if="sessionEvents.length === 0" class="c-muted" style="font-size:0.875rem;">No events found.</div>
 
+                            <div v-else class="session-timeline">
+                              <svg viewBox="0 0 800 84" preserveAspectRatio="none" role="img" aria-label="Session event timeline">
+                                <line x1="20" y1="62" x2="780" y2="62"
+                                      stroke="var(--border)" stroke-width="1"/>
+                                <text x="20" y="76" font-size="9" fill="var(--text-muted)">Session start</text>
+                                <text x="724" y="76" font-size="9" fill="var(--text-muted)">Session end</text>
+
+                                <template v-for="ev in sessionEvents" :key="`timeline-${ev.event_id}`">
+                                  <g :transform="`translate(${timelineX(ev, sessionEvents)}, 0)`">
+                                    <line x1="0" y1="28" x2="0" y2="62"
+                                          :stroke="stageColor(ev)"
+                                          stroke-width="2"
+                                          opacity="0.85"/>
+                                    <circle cx="0" cy="46" r="5"
+                                            :fill="verdictColor(ev)"
+                                            :stroke="stageColor(ev)"
+                                            stroke-width="1.5"/>
+                                    <text x="4" y="34" font-size="8"
+                                          fill="var(--text-muted)"
+                                          transform="rotate(-30, 4, 34)"
+                                          style="font-family:'JetBrains Mono', monospace;">
+                                      {{ truncate(ev.tool_name || ev.action || 'event', 8) }}
+                                    </text>
+                                  </g>
+                                </template>
+                              </svg>
+
+                              <div class="session-timeline-legend">
+                                <span v-for="stage in usedStages(sessionEvents)" :key="stage"
+                                      class="session-timeline-legend-item">
+                                  <span class="session-timeline-legend-swatch"
+                                        :style="{ background: stageColorByName(stage) }"></span>
+                                  {{ stage }}
+                                </span>
+                              </div>
+                            </div>
+
                             <div v-for="ev in sessionEvents" :key="ev.event_id"
                                  class="ev-row" :class="evRowClass(ev)">
                               <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
@@ -1026,6 +1095,44 @@
             if (v === 'ALLOW' || ev.outcome === 'ALLOWED') return 'ev-allow';
             if (v === 'HITL')                              return 'ev-hitl';
             return '';
+          },
+          timelineX(ev, events) {
+            if (!events || events.length < 2) return 20;
+            const times = events
+              .map(e => this.parseUtcDate(e.timestamp)?.getTime())
+              .filter(t => Number.isFinite(t));
+            if (times.length < 2) return 20;
+            const min = Math.min(...times);
+            const max = Math.max(...times);
+            const range = max - min || 1;
+            const t = this.parseUtcDate(ev.timestamp)?.getTime();
+            if (!Number.isFinite(t)) return 20;
+            const svgWidth = 800;
+            return 20 + ((t - min) / range) * (svgWidth - 40);
+          },
+          stageColor(ev) {
+            const stage = ev.stage || '';
+            if (stage.includes('L1.5'))      return '#a855f7';
+            if (stage.includes('Stage 2.5')) return '#6366f1';
+            if (stage.includes('Stage 2'))   return '#3b82f6';
+            if (stage.includes('Stage 1'))   return '#f97316';
+            if (stage.includes('Stage 3'))   return '#7c3aed';
+            if (stage.includes('Output'))    return '#ec4899';
+            return '#6b7280';
+          },
+          stageColorByName(name) {
+            return this.stageColor({ stage: name });
+          },
+          verdictColor(ev) {
+            const v = (ev.verdict || ev.outcome || '').toUpperCase();
+            if (v === 'DENY' || v === 'KILL_SWITCH' || v === 'BLOCKED') return '#ef4444';
+            if (v === 'ALLOW' || v === 'ALLOWED') return '#22c55e';
+            if (v === 'HITL') return '#f59e0b';
+            return '#6b7280';
+          },
+          usedStages(events) {
+            if (!events) return [];
+            return [...new Set(events.map(e => e.stage).filter(Boolean))];
           },
           stageBadgeClass(stage) {
             if (!stage) return 'badge badge-stage badge-stage-unk';
