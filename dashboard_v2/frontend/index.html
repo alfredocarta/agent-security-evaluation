@@ -623,7 +623,7 @@
                                 <span style="font-weight:500;font-size:0.875rem;">{{ ev.tool_name || ev.action }}</span>
                                 <span :class="verdictBadgeClass(ev)">{{ ev.verdict || ev.outcome }}</span>
                                 <span :class="stageBadgeClass(ev.stage)">{{ ev.stage }}</span>
-                                <span v-if="ev.latency_ms != null" class="mono c-muted" style="font-size:0.78rem;">{{ ev.latency_ms }}ms</span>
+                                <span v-if="ev.latency_ms != null" class="mono c-muted" style="font-size:0.78rem;">{{ formatDuration(ev.latency_ms) }}</span>
                               </div>
                               <div class="c-muted" style="margin-top:3px;font-size:0.8rem;">{{ truncate(ev.reason, 120) }}</div>
                             </div>
@@ -730,6 +730,7 @@
                       <th class="r">Calls</th>
                       <th class="r">Blocked</th>
                       <th class="r">Allowed</th>
+                      <th class="r">HITL</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -738,16 +739,17 @@
                         <td class="td-mono">{{ truncate(session.session_id, 26) }}</td>
                         <td style="font-weight:500;">{{ session.agent_id }}</td>
                         <td class="td-mono">{{ formatTime(session.start_time) }}</td>
-                        <td class="r td-mono">{{ session.duration_ms.toLocaleString() }}ms</td>
+                        <td class="r td-mono">{{ formatDuration(session.duration_ms) }}</td>
                         <td class="r td-mono">{{ session.total_events }}</td>
                         <td class="r mono c-danger">{{ session.blocked_count ?? '–' }}</td>
                         <td class="r mono c-success">{{ session.allowed_count ?? '–' }}</td>
+                        <td class="r mono c-warning">{{ session.hitl_count ?? '–' }}</td>
                       </tr>
 
                       <!-- Session drill-down -->
                       <tr v-if="expandedSession === session.session_id"
                           style="background:var(--bg-secondary) !important;cursor:default;">
-                        <td colspan="7" style="padding:0;">
+                        <td colspan="8" style="padding:0;">
                           <div style="padding:16px 20px;">
 
                             <!-- Fix 7: Arch limitation note -->
@@ -778,7 +780,7 @@
                                 <span style="font-weight:600;font-size:0.875rem;">{{ ev.tool_name || ev.action }}</span>
                                 <span :class="verdictBadgeClass(ev)">{{ ev.verdict || ev.outcome }}</span>
                                 <span :class="stageBadgeClass(ev.stage)">{{ ev.stage }}</span>
-                                <span v-if="ev.latency_ms != null" class="mono c-muted" style="font-size:0.78rem;">{{ ev.latency_ms }}ms</span>
+                                <span v-if="ev.latency_ms != null" class="mono c-muted" style="font-size:0.78rem;">{{ formatDuration(ev.latency_ms) }}</span>
                               </div>
                               <div style="margin-top:5px;font-size:0.8125rem;">
                                 <span class="c-muted">Reason: </span>
@@ -858,7 +860,10 @@
             if (!s) return null;
             const id = s.agent_id;
             if (id.includes('smolagents'))  return { agentId: id, framework: 'ToolCallingAgent (smolagents)', model: 'gemma2:2b via Ollama' };
-            if (id.includes('asf-eval'))    return { agentId: id, framework: 'LangGraph ReAct',              model: 'not recorded' };
+            if (id.includes('autogen'))     return { agentId: id, framework: 'AutoGen async agent',           model: 'gemma2:2b via Ollama (AutoGen async)' };
+            if (id.includes('sql-agent'))   return { agentId: id, framework: 'SQL evaluation agent',          model: 'Rule-based (no LLM)' };
+            if (id.includes('asf-eval'))    return { agentId: id, framework: 'LangGraph ReAct',              model: 'LangGraph ReAct' };
+            if (id.includes('crewai'))      return { agentId: id, framework: 'CrewAI agent',                 model: 'gemma2:2b via Ollama (CrewAI)' };
             if (id.includes('openhands'))   return { agentId: id, framework: 'OpenHands CodeAct',            model: 'not recorded' };
             if (id.includes('pyrit'))       return { agentId: id, framework: 'PyRIT red-team',               model: 'not recorded' };
             if (id.includes('promptfoo'))   return { agentId: id, framework: 'promptfoo eval',               model: 'not recorded' };
@@ -964,6 +969,19 @@
           fmtNum(v)   { return (v ?? 0).toLocaleString(); },
           percent(v)  { return `${Math.round((v || 0) * 100)}%`; },
           fmtLatency(ms) { return (!ms || ms === 0) ? '< 1' : String(Math.round(ms)); },
+          parseUtcDate(v) {
+            if (!v) return null;
+            const normalized = String(v).trim().replace(' ', 'T');
+            const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+            const date = new Date(hasZone ? normalized : `${normalized}Z`);
+            return Number.isNaN(date.getTime()) ? null : date;
+          },
+          formatDuration(ms) {
+            ms = Number(ms) || 0;
+            if (ms < 1000) return `${Math.round(ms)}ms`;
+            if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+            return `${(ms / 60000).toFixed(1)}m`;
+          },
           ratioWidth(blocked, allowed, isBlocked) {
             const t = (blocked || 0) + (allowed || 0);
             if (!t) return isBlocked ? '0%' : '100%';
@@ -973,10 +991,14 @@
             v = v || ''; return v.length > n ? v.slice(0, n) + '…' : v;
           },
           formatTime(v) {
-            if (!v) return ''; return v.replace('T', ' ').slice(0, 19);
+            const date = this.parseUtcDate(v);
+            if (!date) return '';
+            return date.toLocaleString();
           },
           timeOnly(v) {
-            if (!v) return ''; const p = v.replace('T', ' '); return p.slice(11, 23) || p.slice(0, 19);
+            const date = this.parseUtcDate(v);
+            if (!date) return '';
+            return date.toLocaleTimeString();
           },
 
           /* ── Article helpers ── */

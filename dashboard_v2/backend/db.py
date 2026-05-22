@@ -215,6 +215,20 @@ def _infer_security_model(outcome: str, reason: str | None) -> str:
     return "L1.5 / policy gate"
 
 
+def _terminal_trace_ids(rows: list[dict[str, Any]], outcomes: set[str] | None = None) -> set[str]:
+    trace_ids: set[str] = set()
+    for row in rows:
+        outcome = row.get("outcome") or ""
+        if outcome not in TERMINAL_OUTCOMES:
+            continue
+        if outcomes is not None and outcome not in outcomes:
+            continue
+        trace_id = row.get("trace_id")
+        if trace_id:
+            trace_ids.add(trace_id)
+    return trace_ids
+
+
 def _normalize_event(row: dict[str, Any]) -> AuditEvent:
     outcome = row.get("outcome") or ""
     reason = row.get("reason") or ""
@@ -295,16 +309,19 @@ async def get_sessions(
         start = _parse_timestamp(ordered[0].get("timestamp"))
         end = _parse_timestamp(ordered[-1].get("timestamp"))
         duration_ms = int((end - start).total_seconds() * 1000) if start and end else 0
-        outcomes = [row.get("outcome") or "" for row in ordered]
+        terminal_trace_ids = _terminal_trace_ids(ordered)
+        blocked_trace_ids = _terminal_trace_ids(ordered, BLOCK_OUTCOMES)
+        allowed_trace_ids = _terminal_trace_ids(ordered, ALLOW_OUTCOMES)
+        hitl_trace_ids = _terminal_trace_ids(ordered, HITL_OUTCOMES)
         summaries.append(SessionSummary(
             session_id=session_id,
             agent_id=ordered[0].get("agent_id") or "",
             start_time=str(ordered[0].get("timestamp") or ""),
             end_time=str(ordered[-1].get("timestamp") or ""),
-            total_events=len(ordered),
-            blocked_count=sum(1 for outcome in outcomes if outcome in BLOCK_OUTCOMES),
-            allowed_count=sum(1 for outcome in outcomes if outcome in ALLOW_OUTCOMES),
-            hitl_count=sum(1 for outcome in outcomes if outcome in HITL_OUTCOMES),
+            total_events=len(terminal_trace_ids),
+            blocked_count=len(blocked_trace_ids),
+            allowed_count=len(allowed_trace_ids),
+            hitl_count=len(hitl_trace_ids),
             duration_ms=duration_ms,
         ))
     summaries.sort(key=lambda item: item.start_time, reverse=True)
