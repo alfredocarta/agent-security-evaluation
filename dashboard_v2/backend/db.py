@@ -15,7 +15,7 @@ ASF_ROOT = Path(os.environ.get("ASF_ROOT", "/Users/alfredo/Projects/agent-securi
 REQUESTED_DB_PATH = Path(os.environ.get("ASF_AUDIT_DB", str(ASF_ROOT / "audit.db")))
 FALLBACK_DB_PATH = ASF_ROOT / "asf_local.db"
 
-ALLOW_OUTCOMES = {"ALLOWED"}
+ALLOW_OUTCOMES = {"ALLOWED", "HEURISTIC_CLEAR"}
 BLOCK_OUTCOMES = {"BLOCKED", "KILL_SWITCH", "OUTPUT_BLOCK"}
 HITL_OUTCOMES = {"HITL_REQUESTED"}
 TERMINAL_OUTCOMES = ALLOW_OUTCOMES | BLOCK_OUTCOMES | HITL_OUTCOMES
@@ -38,6 +38,7 @@ ARTICLE_OUTCOMES: dict[str, Any] = {
 }
 
 ARTICLE_BY_OUTCOME = {
+    "HEURISTIC_CLEAR": ("Art. 15", "Accuracy"),
     "KILL_SWITCH": ("Art. 9", "Risk management"),
     "BLOCKED": ("Art. 9", "Risk management"),
     "OUTPUT_BLOCK": ("Art. 12", "Record keeping"),
