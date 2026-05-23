@@ -800,7 +800,7 @@
                   <div style="display:flex;align-items:center;gap:10px;">
                     <div style="display:flex;align-items:center;gap:6px;">
                       <label style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">Agent:</label>
-                      <select v-model="selectedAgent" @change="refresh()"
+                      <select v-model="selectedAgent" @change="onAgentChange"
                               style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:0.75rem;color:var(--text-primary);cursor:pointer;outline:none;">
                         <option value="">All agents</option>
                         <option v-for="a in agents" :key="a" :value="a">{{ a }}</option>
@@ -975,6 +975,7 @@
             loadingSession: false,
             expandedReasons: new Set(),
             articleEvents: [],
+            articleCache: {},
             expandedArticle: null,
             loadingArticle: false,
             lastRefresh: '',
@@ -1059,6 +1060,12 @@
             if (this.expandedArticle) this.loadArticle(this.expandedArticle);
           },
 
+          async onAgentChange() {
+            this.expandedSession = null;
+            this.sessionEvents = [];
+            await this.refresh();
+          },
+
           toggleTheme() {
             this.themeRotating = true;
             setTimeout(() => { this.themeRotating = false; }, 350);
@@ -1108,8 +1115,17 @@
             await this.loadArticle(article);
           },
           async loadArticle(article) {
+            if (this.articleCache[article]) {
+              this.articleEvents = this.articleCache[article];
+              this.loadingArticle = false;
+              return;
+            }
             this.loadingArticle = true;
-            try { this.articleEvents = await this.fetchJson(`/api/compliance/${encodeURIComponent(article)}`); }
+            try {
+              const events = await this.fetchJson(`/api/compliance/${encodeURIComponent(article)}`);
+              this.articleCache[article] = events;
+              this.articleEvents = events;
+            }
             finally { this.loadingArticle = false; }
           },
 

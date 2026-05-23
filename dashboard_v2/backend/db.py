@@ -88,6 +88,26 @@ def get_db_path() -> Path:
     return FALLBACK_DB_PATH
 
 
+async def init_db() -> None:
+    db_path = get_db_path()
+    if not _has_audit_schema(db_path):
+        return
+    async with aiosqlite.connect(db_path) as conn:
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_trail_action "
+            "ON audit_trail(action)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_trail_timestamp "
+            "ON audit_trail(timestamp DESC)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_trail_outcome "
+            "ON audit_trail(outcome)"
+        )
+        await conn.commit()
+
+
 def _parse_timestamp(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -431,15 +451,34 @@ async def get_compliance_events(article_code: str, limit: int = 20) -> list[Audi
     outcomes = ARTICLE_OUTCOMES.get(article_code)
     if outcomes is None:
         return []
-    rows = await _fetch_rows()
+    db_path = get_db_path()
+    if not _has_audit_schema(db_path):
+        return []
+
+    query = (
+        "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
+        "FROM audit_trail"
+    )
+    params: list[Any] = []
     if outcomes is _ALL_OUTCOMES:
-        filtered = list(rows)
+        pass
     elif outcomes is _BENCHMARK_EVENTS:
-        filtered = [row for row in rows if (row.get("agent_id") or "") in EVAL_TOOL_AGENTS]
+        placeholders = ",".join("?" for _ in EVAL_TOOL_AGENTS)
+        query += f" WHERE agent_id IN ({placeholders})"
+        params.extend(sorted(EVAL_TOOL_AGENTS))
     else:
-        filtered = [row for row in rows if (row.get("outcome") or "") in outcomes]
-    filtered.sort(key=lambda r: r.get("timestamp") or "", reverse=True)
-    return [_normalize_event(row) for row in filtered[:limit]]
+        placeholders = ",".join("?" for _ in outcomes)
+        query += f" WHERE outcome IN ({placeholders})"
+        params.extend(sorted(outcomes))
+
+    query += " ORDER BY timestamp DESC LIMIT ?"
+    params.append(limit)
+
+    async with aiosqlite.connect(db_path) as conn:
+        conn.row_factory = aiosqlite.Row
+        cursor = await conn.execute(query, params)
+        rows = [dict(row) for row in await cursor.fetchall()]
+    return [_normalize_event(row) for row in rows]
 
 
 async def get_hitl_events() -> list[AuditEvent]:

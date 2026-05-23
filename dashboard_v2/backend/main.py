@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .db import init_db
 from .routers import agents, compliance, events, hitl, metrics, sessions
 
 
@@ -30,6 +31,11 @@ app.include_router(metrics.router)
 app.include_router(compliance.router)
 
 app.mount("/assets", StaticFiles(directory=FRONTEND_DIR), name="assets")
+
+
+@app.on_event("startup")
+async def startup() -> None:
+    await init_db()
 
 
 @app.get("/")
