@@ -4,10 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ASF Compliance Dashboard</title>
+    <link rel="icon" href="data:," />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    <script>tailwind.config = { darkMode: 'class' }</script>
+    <script>
+      window.tailwind = window.tailwind || {};
+      window.tailwind.config = { darkMode: 'class' };
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 
@@ -437,36 +441,6 @@
       .ev-allow { border-left-color: var(--success); }
       .ev-hitl  { border-left-color: var(--warning); }
 
-      /* ── Session timeline ── */
-      .session-timeline { margin: 14px 0; }
-      .session-timeline svg {
-        display: block;
-        width: 100%;
-        height: 84px;
-        background: var(--bg-secondary);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        overflow: visible;
-      }
-      .session-timeline-legend {
-        display: flex;
-        gap: 12px;
-        margin-top: 6px;
-        flex-wrap: wrap;
-      }
-      .session-timeline-legend-item {
-        font-size: 0.6875rem;
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        color: var(--text-muted);
-      }
-      .session-timeline-legend-swatch {
-        width: 8px; height: 8px;
-        border-radius: 2px;
-        display: inline-block;
-      }
-
       /* ── Search input — bottom-border only ── */
       .search-input {
         width: 100%;
@@ -881,43 +855,6 @@
                             <div v-if="loadingSession" style="font-size:0.8125rem;color:var(--text-muted);">Loading session events…</div>
                             <div v-else-if="sessionEvents.length === 0" style="font-size:0.8125rem;color:var(--text-muted);">No events found.</div>
 
-                            <div v-else class="session-timeline">
-                              <svg viewBox="0 0 800 84" preserveAspectRatio="none" role="img" aria-label="Session event timeline">
-                                <line x1="20" y1="62" x2="780" y2="62"
-                                      stroke="var(--border)" stroke-width="1"/>
-                                <text x="20" y="76" font-size="9" fill="var(--text-muted)">Session start</text>
-                                <text x="724" y="76" font-size="9" fill="var(--text-muted)">Session end</text>
-
-                                <template v-for="ev in sessionEvents" :key="`timeline-${ev.event_id}`">
-                                  <g :transform="`translate(${timelineX(ev, sessionEvents)}, 0)`">
-                                    <line x1="0" y1="28" x2="0" y2="62"
-                                          :stroke="stageColor(ev)"
-                                          stroke-width="2"
-                                          opacity="0.85"/>
-                                    <circle cx="0" cy="46" r="5"
-                                            :fill="verdictColor(ev)"
-                                            :stroke="stageColor(ev)"
-                                            stroke-width="1.5"/>
-                                    <text x="4" y="34" font-size="8"
-                                          fill="var(--text-muted)"
-                                          transform="rotate(-30, 4, 34)"
-                                          style="font-family:'JetBrains Mono', monospace;">
-                                      {{ truncate(ev.tool_name || ev.action || 'event', 8) }}
-                                    </text>
-                                  </g>
-                                </template>
-                              </svg>
-
-                              <div class="session-timeline-legend">
-                                <span v-for="stage in usedStages(sessionEvents)" :key="stage"
-                                      class="session-timeline-legend-item">
-                                  <span class="session-timeline-legend-swatch"
-                                        :style="{ background: stageColorByName(stage) }"></span>
-                                  {{ stage }}
-                                </span>
-                              </div>
-                            </div>
-
                             <div v-for="ev in sessionEvents" :key="ev.event_id"
                                  class="ev-row" :class="evRowClass(ev)">
                               <div style="display:flex;flex-wrap:wrap;align-items:center;gap:7px;">
@@ -1204,41 +1141,6 @@
             if (v === 'ALLOW' || ev.outcome === 'ALLOWED') return 'ev-allow';
             if (v === 'HITL')                              return 'ev-hitl';
             return '';
-          },
-          timelineX(ev, events) {
-            if (!events || events.length < 2) return 20;
-            const times = events
-              .map(e => this.parseUtcDate(e.timestamp)?.getTime())
-              .filter(t => Number.isFinite(t));
-            if (times.length < 2) return 20;
-            const min = Math.min(...times);
-            const max = Math.max(...times);
-            const range = max - min || 1;
-            const t = this.parseUtcDate(ev.timestamp)?.getTime();
-            if (!Number.isFinite(t)) return 20;
-            return 20 + ((t - min) / range) * (800 - 40);
-          },
-          stageColor(ev) {
-            const stage = ev.stage || '';
-            if (stage.includes('L1.5'))      return '#a855f7';
-            if (stage.includes('Stage 2.5')) return '#6366f1';
-            if (stage.includes('Stage 2'))   return '#3b82f6';
-            if (stage.includes('Stage 1'))   return '#f97316';
-            if (stage.includes('Stage 3'))   return '#7c3aed';
-            if (stage.includes('Output'))    return '#ec4899';
-            return '#6b7280';
-          },
-          stageColorByName(name) { return this.stageColor({ stage: name }); },
-          verdictColor(ev) {
-            const v = (ev.verdict || ev.outcome || '').toUpperCase();
-            if (v === 'DENY' || v === 'KILL_SWITCH' || v === 'BLOCKED') return '#f05252';
-            if (v === 'ALLOW' || v === 'ALLOWED') return '#1fb855';
-            if (v === 'HITL') return '#e8a020';
-            return '#6b7280';
-          },
-          usedStages(events) {
-            if (!events) return [];
-            return [...new Set(events.map(e => e.stage).filter(Boolean))];
           },
           stageBadgeClass(stage) {
             if (!stage) return 'badge badge-stage badge-stage-unk';
