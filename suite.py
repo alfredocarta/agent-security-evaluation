@@ -152,6 +152,15 @@ def to_dict(suite: SuiteResult) -> dict:
     }
 
 
+import atexit
+import sys as _sys
+_sys.path.insert(0, "/Users/alfredo/Projects/agent-security-framework")
+try:
+    from audit import flush_langfuse
+    atexit.register(flush_langfuse)
+except Exception:
+    pass
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()

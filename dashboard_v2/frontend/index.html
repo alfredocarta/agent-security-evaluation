@@ -16,46 +16,25 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 
     <style>
-      /* ── Light mode palette ── */
+      /* ── Palette (dark only) ── */
       :root {
-        --bg-primary:    #f5f6f8;
-        --bg-secondary:  #eef0f3;
-        --bg-card:       #ffffff;
-        --bg-sidebar:    #f9fafb;
-        --bg-stripe:     rgba(0,0,0,0.012);
-        --bg-hover:      rgba(0,0,0,0.022);
-        --text-primary:  #111827;
-        --text-secondary:#4b5563;
-        --text-muted:    #9ca3af;
-        --border:        #e5e7eb;
-        --border-subtle: #f0f1f3;
-        --accent:        #4f8ef7;
-        --accent-hover:  #6ba3fa;
-        --success:       #1fb855;
-        --danger:        #f05252;
-        --warning:       #e8a020;
-        --shadow:        rgba(0,0,0,0.05);
-      }
-
-      /* ── Dark mode palette ── */
-      .dark {
-        --bg-primary:    #111318;
-        --bg-secondary:  #13161d;
-        --bg-card:       #181c26;
-        --bg-sidebar:    #111318;
-        --bg-stripe:     rgba(255,255,255,0.013);
-        --bg-hover:      rgba(255,255,255,0.032);
-        --text-primary:  #e8ecf4;
-        --text-secondary:#8892a4;
-        --text-muted:    #5a6478;
-        --border:        #22283a;
-        --border-subtle: #1a1e2e;
-        --accent:        #4f8ef7;
-        --accent-hover:  #6ba3fa;
-        --success:       #1fb855;
-        --danger:        #f05252;
-        --warning:       #e8a020;
-        --shadow:        rgba(0,0,0,0.4);
+        --bg-primary:    #0d1117;
+        --bg-secondary:  #0d1117;
+        --bg-card:       #161b22;
+        --bg-sidebar:    #010409;
+        --bg-stripe:     rgba(255,255,255,0.018);
+        --bg-hover:      rgba(255,255,255,0.038);
+        --text-primary:  #c9d1d9;
+        --text-secondary:#8b949e;
+        --text-muted:    #484f58;
+        --border:        #21262d;
+        --border-subtle: #161b22;
+        --accent:        #388bfd;
+        --accent-hover:  #58a6ff;
+        --success:       #3fb950;
+        --danger:        #f85149;
+        --warning:       #d29922;
+        --shadow:        rgba(0,0,0,0.6);
       }
 
       /* ── Reset + Base ── */
@@ -64,7 +43,7 @@
 
       body {
         font-family: 'Inter', system-ui, sans-serif;
-        font-size: 13.5px;
+        font-size: 13px;
         background: var(--bg-primary);
         color: var(--text-primary);
         line-height: 1.5;
@@ -89,77 +68,54 @@
       }
 
       .sidebar-logo {
-        padding: 16px 14px 12px;
+        padding: 14px 16px;
         border-bottom: 1px solid var(--border);
         display: flex;
         align-items: center;
-        gap: 9px;
         flex-shrink: 0;
       }
 
-      .sidebar-logo-icon {
-        width: 28px; height: 28px;
-        background: var(--accent);
-        border-radius: 6px;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 0.6rem; font-weight: 800; color: #fff;
-        letter-spacing: 0.02em;
-        flex-shrink: 0;
-      }
-
-      .sidebar-logo-text { line-height: 1.25; }
-      .sidebar-logo-title { font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); }
-      .sidebar-logo-sub   { font-size: 0.625rem; color: var(--text-muted); }
+      .sidebar-logo-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+      .sidebar-logo-sub   { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
       .sidebar-nav { padding: 8px 0; flex: 1; }
-
-      .nav-section-label {
-        padding: 6px 16px 3px;
-        font-size: 0.6rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        color: var(--text-muted);
-      }
 
       .nav-item {
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 7px 12px 7px 14px;
+        padding: 7px 14px;
         margin: 1px 6px;
         font-size: 13px;
         font-weight: 500;
         color: var(--text-secondary);
         text-decoration: none;
-        border-radius: 5px;
+        border-radius: 4px;
         border-left: 2px solid transparent;
-        opacity: 0.5;
-        transition: color 150ms ease, opacity 150ms ease, border-color 150ms ease;
         cursor: pointer;
         background: transparent;
+        transition: color 120ms ease, background 120ms ease;
       }
-      .nav-item:hover { opacity: 0.8; color: var(--text-primary); background: transparent; }
+      .nav-item:hover { color: var(--text-primary); background: var(--bg-hover); }
       .nav-item.active {
-        opacity: 1;
         color: var(--text-primary);
         border-left-color: var(--accent);
-        background: transparent;
+        background: var(--bg-hover);
       }
 
       .nav-badge {
         margin-left: auto;
         background: var(--warning);
         color: #000;
-        font-size: 0.6rem;
-        font-weight: 800;
+        font-size: 11px;
+        font-weight: 700;
         padding: 1px 5px;
         border-radius: 9999px;
         line-height: 1.5;
       }
 
       .sidebar-footer {
-        padding: 12px 16px;
+        padding: 10px 16px;
         border-top: 1px solid var(--border);
         flex-shrink: 0;
       }
@@ -168,8 +124,8 @@
 
       /* ── Topbar ── */
       .topbar {
-        height: 52px;
-        background: var(--bg-card);
+        height: 48px;
+        background: var(--bg-sidebar);
         border-bottom: 1px solid var(--border);
         padding: 0 24px;
         display: flex;
@@ -182,41 +138,24 @@
       }
 
       .topbar-title {
-        font-size: 0.75rem;
-        font-weight: 600;
+        font-size: 13px;
+        font-weight: 500;
         color: var(--text-secondary);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
       }
 
       .topbar-actions { display: flex; align-items: center; gap: 14px; }
 
       .topbar-refresh {
-        font-size: 0.6875rem;
+        font-size: 11px;
         color: var(--text-muted);
         font-family: 'JetBrains Mono', monospace;
       }
-
-      .theme-btn {
-        width: 30px; height: 30px;
-        display: flex; align-items: center; justify-content: center;
-        border-radius: 6px;
-        background: var(--bg-secondary);
-        border: 1px solid var(--border);
-        cursor: pointer;
-        font-size: 0.875rem;
-        color: var(--text-secondary);
-        transition: background 120ms ease, transform 300ms ease;
-        line-height: 1;
-      }
-      .theme-btn:hover { background: var(--bg-hover); }
-      .theme-btn.rotating { transform: rotate(180deg); }
 
       /* ── Card base ── */
       .card {
         background: var(--bg-card);
         border: 1px solid var(--border);
-        border-radius: 8px;
+        border-radius: 6px;
         padding: 20px 24px;
       }
 
@@ -224,34 +163,68 @@
       .kpi-card {
         background: var(--bg-card);
         border: 1px solid var(--border);
-        border-top: 3px solid var(--kpi-color, var(--accent));
-        border-radius: 8px;
+        border-radius: 6px;
         padding: 20px;
+        min-height: 142px;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
       }
 
       .kpi-label {
         font-size: 11px;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: var(--text-secondary);
-        opacity: 0.55;
+        letter-spacing: 0.06em;
+        color: var(--text-muted);
       }
       .kpi-value {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 2.125rem;
+        font-size: 28px;
         font-weight: 600;
-        letter-spacing: -0.03em;
         line-height: 1.1;
-        margin-top: 10px;
+        margin-top: 8px;
         font-variant-numeric: tabular-nums;
         color: var(--text-primary);
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
       }
-      .kpi-sub   { font-size: 0.6875rem; color: var(--text-muted); margin-top: 5px; }
-      .kpi-trend { font-size: 0.6875rem; margin-top: 5px; font-weight: 500; color: var(--text-muted); }
+      .kpi-unit {
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--text-muted);
+        margin-left: 2px;
+      }
+      .kpi-sub   { font-size: 11px; color: var(--text-muted); margin-top: 5px; }
+      .kpi-trend { font-size: 11px; margin-top: 5px; font-weight: 500; color: var(--text-muted); }
       .kpi-trend.up      { color: var(--success); }
       .kpi-trend.down    { color: var(--danger); }
       .kpi-trend.neutral { color: var(--text-muted); }
+      .kpi-ratio {
+        height: 2px;
+        border-radius: 1px;
+        overflow: hidden;
+        display: flex;
+        background: var(--border);
+        margin-top: 10px;
+      }
+      .kpi-ratio-blocked { background: var(--danger); }
+      .kpi-ratio-allowed { background: var(--success); }
+      .kpi-ratio-labels {
+        margin-top: 7px;
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+      .kpi-ratio-labels span {
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
 
       /* ── Section headers ── */
       .section-hdr {
@@ -263,18 +236,18 @@
         border-bottom: 1px solid var(--border);
       }
       .section-title {
-        font-size: 0.6875rem;
+        font-size: 11px;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        color: var(--text-secondary);
+        color: var(--text-muted);
       }
-      .section-sub { font-size: 0.75rem; color: var(--text-muted); }
+      .section-sub { font-size: 12px; color: var(--text-muted); }
 
       /* ── Status dots ── */
       .status-dot {
         display: inline-block;
-        width: 8px; height: 8px;
+        width: 7px; height: 7px;
         border-radius: 50%;
         flex-shrink: 0;
       }
@@ -286,9 +259,9 @@
       /* ── Agent dots ── */
       .agent-dot {
         display: inline-block;
-        width: 7px; height: 7px;
+        width: 6px; height: 6px;
         border-radius: 50%;
-        margin-right: 6px;
+        margin-right: 7px;
         flex-shrink: 0;
         vertical-align: middle;
       }
@@ -297,36 +270,28 @@
       .badge {
         display: inline-flex;
         align-items: center;
-        padding: 2px 7px;
-        border-radius: 4px;
-        font-size: 0.6875rem;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 11px;
         font-weight: 600;
         line-height: 1.6;
         white-space: nowrap;
       }
-      .badge-allow   { background: rgba(31,184,85,.12);   color: var(--success); }
-      .badge-deny    { background: rgba(240,82,82,.12);    color: var(--danger);  }
-      .badge-hitl    { background: rgba(232,160,32,.12);   color: var(--warning); }
-      .badge-neutral { background: var(--bg-hover);        color: var(--text-secondary); }
-      .badge-configured { background: rgba(79,142,247,.12); color: var(--accent); }
+      .badge-allow      { background: rgba(63,185,80,.15);   color: var(--success); }
+      .badge-deny       { background: rgba(248,81,73,.15);    color: var(--danger);  }
+      .badge-hitl       { background: rgba(210,153,34,.15);   color: var(--warning); }
+      .badge-neutral    { background: var(--bg-hover);        color: var(--text-secondary); }
+      .badge-configured { background: rgba(56,139,253,.12);   color: var(--accent); }
 
-      /* Stage badges — outline only, no fill */
-      .badge-stage { border: 1px solid; background: transparent; }
-      .badge-stage-l15    { color: #c084fc; border-color: rgba(192,132,252,.35); }
-      .badge-stage-1      { color: #fb923c; border-color: rgba(251,146,60,.35);  }
-      .badge-stage-2      { color: #60a5fa; border-color: rgba(96,165,250,.35);  }
-      .badge-stage-25     { color: #818cf8; border-color: rgba(129,140,248,.35); }
-      .badge-stage-3      { color: #a78bfa; border-color: rgba(167,139,250,.35); }
-      .badge-stage-output { color: #f472b6; border-color: rgba(244,114,182,.35); }
-      .badge-stage-pg     { color: #e879f9; border-color: rgba(232,121,249,.35); }
-      .badge-stage-unk    { color: var(--text-muted); border-color: var(--border); }
-      /* light mode */
-      :root .badge-stage-l15    { color: #7c3aed; border-color: rgba(124,58,237,.3);  }
-      :root .badge-stage-1      { color: #c2410c; border-color: rgba(194,65,12,.3);   }
-      :root .badge-stage-2      { color: #1d4ed8; border-color: rgba(29,78,216,.3);   }
-      :root .badge-stage-25     { color: #4338ca; border-color: rgba(67,56,202,.3);   }
-      :root .badge-stage-3      { color: #6d28d9; border-color: rgba(109,40,217,.3);  }
-      :root .badge-stage-output { color: #be185d; border-color: rgba(190,24,93,.3);   }
+      /* Stage badges — neutral, name carries the information */
+      .badge-stage {
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--text-muted);
+      }
+      .badge-stage-l15, .badge-stage-1, .badge-stage-2,
+      .badge-stage-25, .badge-stage-3, .badge-stage-output,
+      .badge-stage-pg, .badge-stage-unk { /* inherits .badge-stage */ }
 
       /* ── Pulsing amber dot ── */
       @keyframes pulse-amber {
@@ -350,7 +315,7 @@
         gap: 7px;
         border-left: 3px solid var(--warning);
         padding: 4px 10px;
-        font-size: 0.75rem;
+        font-size: 12px;
         color: var(--text-secondary);
         font-weight: 500;
       }
@@ -360,20 +325,20 @@
         gap: 7px;
         border-left: 3px solid var(--success);
         padding: 4px 10px;
-        font-size: 0.75rem;
+        font-size: 12px;
         color: var(--text-secondary);
         font-weight: 500;
       }
 
       /* ── Tables ── */
-      .data-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+      .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       .data-table thead { position: sticky; top: 0; z-index: 5; }
       .data-table th {
         padding: 8px 12px;
-        font-size: 0.6rem;
+        font-size: 11px;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.09em;
+        letter-spacing: 0.06em;
         color: var(--text-muted);
         background: var(--bg-card);
         border-bottom: 1px solid var(--border);
@@ -381,75 +346,93 @@
         white-space: nowrap;
       }
       .data-table th.r, .data-table td.r { text-align: right; }
-      .data-table tbody tr {
-        border-bottom: 1px solid var(--border-subtle);
-        transition: box-shadow 100ms ease;
-      }
-      .data-table tbody tr:nth-child(even) { background: var(--bg-stripe); }
-      .data-table tbody tr:hover {
-        box-shadow: inset 2px 0 0 var(--accent);
-        cursor: pointer;
-      }
+      .data-table tbody tr { border-bottom: 1px solid var(--border-subtle); }
+      .data-table tbody tr:hover { background: var(--bg-hover); cursor: pointer; }
       .data-table td { padding: 9px 12px; color: var(--text-primary); vertical-align: middle; }
-      .td-mono { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-muted); }
+      .td-mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-muted); }
 
       /* ── Duration mini-bar ── */
       .dur-bar {
-        width: 52px; height: 2px;
+        width: 48px; height: 2px;
         background: var(--border);
         border-radius: 1px;
         margin-top: 4px;
         margin-left: auto;
         overflow: hidden;
       }
-      .dur-bar-fill {
-        height: 100%;
-        background: var(--accent);
-        border-radius: 1px;
-        opacity: 0.55;
-      }
+      .dur-bar-fill { height: 100%; background: var(--accent); border-radius: 1px; opacity: 0.5; }
 
       /* ── Article progress bar ── */
-      .art-progress { height: 2px; border-radius: 1px; background: var(--border-subtle); overflow: hidden; margin-top: 5px; }
-      .art-progress-fill { height: 100%; background: var(--accent); border-radius: 1px; opacity: 0.45; }
+      .art-progress { height: 2px; border-radius: 1px; background: var(--border); overflow: hidden; margin-top: 5px; }
+      .art-progress-fill { height: 100%; background: var(--accent); border-radius: 1px; opacity: 0.4; }
+      .compliance-row td { height: 58px; }
+      .article-code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .control-cell {
+        max-width: 0;
+        min-width: 0;
+      }
+      .control-title {
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 18px;
+        color: var(--text-primary);
+        white-space: nowrap;
+      }
+      .control-description {
+        margin-top: 1px;
+        font-size: 12px;
+        line-height: 16px;
+        color: var(--text-muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .article-count {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .article-status-text {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
 
       /* ── Chevron ── */
-      .chevron {
-        display: inline-block;
-        transition: transform 150ms ease;
-        color: var(--text-muted);
-        flex-shrink: 0;
-      }
+      .chevron { display: inline-block; transition: transform 150ms ease; color: var(--text-muted); flex-shrink: 0; }
       .chevron.open { transform: rotate(90deg); }
 
       /* ── Drill-down animation ── */
       @keyframes expandDown {
-        from { opacity: 0; transform: translateY(-5px); }
+        from { opacity: 0; transform: translateY(-4px); }
         to   { opacity: 1; transform: translateY(0); }
       }
-      .drill-content { animation: expandDown 200ms ease; }
+      .drill-content { animation: expandDown 180ms ease; }
 
       /* ── Event rows (drill-down) ── */
       .ev-row {
         border-left: 2px solid var(--border);
-        padding: 9px 12px;
-        margin-bottom: 4px;
-        border-radius: 0 5px 5px 0;
-        background: var(--bg-secondary);
+        padding: 8px 12px;
+        margin-bottom: 3px;
+        border-radius: 0 4px 4px 0;
+        background: var(--bg-primary);
       }
       .ev-deny  { border-left-color: var(--danger);  }
       .ev-allow { border-left-color: var(--success); }
       .ev-hitl  { border-left-color: var(--warning); }
 
-      /* ── Search input — bottom-border only ── */
+      /* ── Search input ── */
       .search-input {
         width: 100%;
         background: transparent;
         border: none;
         border-bottom: 1px solid var(--border);
-        border-radius: 0;
         padding: 6px 0;
-        font-size: 0.8125rem;
+        font-size: 13px;
         color: var(--text-primary);
         outline: none;
         margin-bottom: 14px;
@@ -469,40 +452,29 @@
       .c-accent    { color: var(--accent); }
 
       /* ── Scroll offset ── */
-      section[id] { scroll-margin-top: 68px; }
+      section[id] { scroll-margin-top: 60px; }
 
       /* ── Scrollbars ── */
-      ::-webkit-scrollbar { width: 5px; height: 5px; }
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
       ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-      ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
     </style>
   </head>
 
   <body>
-    <script>
-      (function () {
-        var saved = localStorage.getItem('asf-theme') || 'dark';
-        if (saved === 'light') document.documentElement.classList.remove('dark');
-        else document.documentElement.classList.add('dark');
-      })();
-    </script>
 
     <div id="app" class="app-layout">
 
       <!-- ══ Sidebar ══ -->
       <aside class="sidebar">
         <div class="sidebar-logo">
-          <div class="sidebar-logo-icon">ASF</div>
           <div class="sidebar-logo-text">
-            <div class="sidebar-logo-title">Agent Security</div>
-            <div class="sidebar-logo-sub">Framework</div>
+            <div class="sidebar-logo-title">Agent Security Framework</div>
+            <div class="sidebar-logo-sub">Compliance &amp; Audit</div>
           </div>
         </div>
 
         <nav class="sidebar-nav">
-          <div class="nav-section-label">Navigation</div>
-
           <a class="nav-item" :class="{ active: activeSection === 'overview' }"
              href="#overview" @click.prevent="scrollTo('overview')">
             <svg width="14" height="14" viewBox="0 0 15 15" fill="currentColor" style="flex-shrink:0;">
@@ -538,10 +510,7 @@
         </nav>
 
         <div class="sidebar-footer">
-          <div class="mono" style="font-size:0.6875rem;color:var(--text-muted);">v2.0 · SQLite</div>
-          <div style="font-size:0.6875rem;color:var(--text-muted);margin-top:2px;">
-            {{ sessions.length }} sessions loaded
-          </div>
+          <div style="font-size:11px;color:var(--text-muted);">{{ sessions.length }} sessions · ASF v2</div>
         </div>
       </aside>
 
@@ -549,13 +518,9 @@
       <div class="content-wrapper">
 
         <header class="topbar">
-          <div class="topbar-title">ASF Compliance Dashboard</div>
+          <div class="topbar-title">Agent Security Framework / {{ activeSection === 'overview' ? 'Overview' : activeSection === 'compliance' ? 'EU AI Act' : activeSection === 'hitl' ? 'Human Oversight' : 'Sessions' }}</div>
           <div class="topbar-actions">
-            <span class="topbar-refresh">{{ lastRefresh || 'pending' }} · 5s</span>
-            <button class="theme-btn" :class="{ rotating: themeRotating }" @click="toggleTheme"
-                    :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'">
-              <span v-if="isDark">☀</span><span v-else>🌙</span>
-            </button>
+            <span class="topbar-refresh">Last refresh: {{ lastRefresh || 'pending' }} · 5s</span>
           </div>
         </header>
 
@@ -568,7 +533,7 @@
               <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" style="margin-bottom:14px;">
 
                 <!-- Tool Calls Inspected -->
-                <div class="kpi-card" style="--kpi-color: var(--accent);">
+                <div class="kpi-card">
                   <div class="kpi-label">Tool Calls (24h)</div>
                   <div class="kpi-value">{{ fmtNum(metrics.tool_calls_last_24h) }}</div>
                   <div class="kpi-sub">{{ fmtNum(metrics.total_tool_calls) }} total since deploy</div>
@@ -580,7 +545,7 @@
                 </div>
 
                 <!-- Block Rate -->
-                <div class="kpi-card" :style="blockRateCardStyle">
+                <div class="kpi-card">
                   <div class="kpi-label">Block Rate</div>
                   <div class="kpi-value" :style="blockRateValueStyle">{{ percent(metrics.detection_rate) }}</div>
                   <div class="kpi-sub">of terminal security decisions</div>
@@ -588,24 +553,24 @@
                 </div>
 
                 <!-- Security Decisions -->
-                <div class="kpi-card" style="--kpi-color: var(--danger);">
+                <div class="kpi-card">
                   <div class="kpi-label">Threats Blocked</div>
                   <div class="kpi-value" style="color:var(--danger);">{{ fmtNum(metrics.blocked_count) }}</div>
-                  <div style="margin-top:10px;height:2px;border-radius:1px;overflow:hidden;display:flex;background:var(--border);">
-                    <div style="background:var(--danger);" :style="{ width: ratioWidth(metrics.blocked_count, metrics.allowed_count, true) }"></div>
-                    <div style="background:var(--success);" :style="{ width: ratioWidth(metrics.blocked_count, metrics.allowed_count, false) }"></div>
+                  <div class="kpi-ratio">
+                    <div class="kpi-ratio-blocked" :style="{ width: ratioWidth(metrics.blocked_count, metrics.allowed_count, true) }"></div>
+                    <div class="kpi-ratio-allowed" :style="{ width: ratioWidth(metrics.blocked_count, metrics.allowed_count, false) }"></div>
                   </div>
-                  <div style="margin-top:7px;display:flex;justify-content:space-between;font-size:0.6875rem;color:var(--text-muted);">
+                  <div class="kpi-ratio-labels">
                     <span style="color:var(--danger);">{{ fmtNum(metrics.blocked_count) }} blocked</span>
                     <span style="color:var(--success);">{{ fmtNum(metrics.allowed_count) }} allowed</span>
                   </div>
                 </div>
 
                 <!-- Security Overhead -->
-                <div class="kpi-card" style="--kpi-color: #4b5563;">
+                <div class="kpi-card">
                   <div class="kpi-label">Security Overhead</div>
                   <div class="kpi-value">
-                    {{ fmtLatency(metrics.avg_latency_ms) }}<span style="font-size:1rem;font-weight:400;color:var(--text-muted);">ms</span>
+                    {{ fmtLatency(metrics.avg_latency_ms) }}<span class="kpi-unit">ms</span>
                   </div>
                   <div class="kpi-sub">avg per tool call inspection</div>
                   <div class="kpi-trend neutral">p95: {{ metrics.p95_latency_ms ? Math.round(metrics.p95_latency_ms) + 'ms' : '—' }}</div>
@@ -613,12 +578,12 @@
               </div>
 
               <!-- Eval context — single italic line -->
-              <div style="font-size:0.75rem;font-style:italic;color:var(--text-muted);margin-bottom:4px;">
+              <div style="font-size:12px;font-style:italic;color:var(--text-muted);margin-bottom:4px;">
                 Data reflects evaluation suite runs · block rate includes adversarial test scenarios designed to be blocked.
               </div>
 
               <!-- Impact summary — inline text, no card -->
-              <div style="font-size:0.75rem;color:var(--text-muted);">
+              <div style="font-size:12px;color:var(--text-muted);">
                 ASF protected
                 <span style="color:var(--text-primary);font-weight:600;">{{ fmtNum(metrics.blocked_count) }}</span> threats ·
                 <span style="color:var(--text-primary);font-weight:600;">{{ metrics.hitl_count ?? 0 }}</span> HITL escalations ·
@@ -636,7 +601,7 @@
                 <table class="data-table">
                   <thead>
                     <tr>
-                      <th style="width:90px;">Article</th>
+                      <th style="width:110px;">Article</th>
                       <th>Control</th>
                       <th class="r" style="width:76px;">Events</th>
                       <th class="r" style="width:130px;">Status</th>
@@ -644,7 +609,8 @@
                   </thead>
                   <tbody>
                     <template v-for="item in compliance" :key="item.article">
-                      <tr @click="toggleArticle(item.article)"
+                      <tr class="compliance-row"
+                          @click="toggleArticle(item.article)"
                           :style="expandedArticle === item.article ? 'background:var(--bg-hover)' : ''">
                         <td>
                           <span style="display:flex;align-items:center;gap:6px;">
@@ -653,22 +619,21 @@
                                  stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                               <polyline points="4,2 8,6 4,10"/>
                             </svg>
-                            <span style="font-family:'JetBrains Mono',monospace;font-size:0.8125rem;font-weight:600;">{{ item.article }}</span>
+                            <span class="article-code">{{ item.article }}</span>
                           </span>
                         </td>
-                        <td>
-                          <div style="font-weight:500;font-size:0.8125rem;">{{ item.control }}</div>
-                          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:1px;">{{ item.description }}</div>
-                          <div v-if="item.note" style="font-size:0.6875rem;color:var(--text-muted);margin-top:2px;font-style:italic;">{{ item.note }}</div>
+                        <td class="control-cell">
+                          <div class="control-title">{{ item.control }}</div>
+                          <div v-if="item.description" class="control-description">{{ item.description }}</div>
                           <div class="art-progress">
                             <div class="art-progress-fill" :style="{ width: articleProgress(item.event_count) + '%' }"></div>
                           </div>
                         </td>
-                        <td class="r" style="font-family:'JetBrains Mono',monospace;font-size:0.8125rem;font-weight:600;">{{ item.event_count.toLocaleString() }}</td>
+                        <td class="r article-count">{{ item.event_count.toLocaleString() }}</td>
                         <td class="r">
                           <span style="display:inline-flex;align-items:center;gap:5px;justify-content:flex-end;">
                             <span class="status-dot" :class="articleStatusDotClass(item)"></span>
-                            <span style="font-size:0.75rem;color:var(--text-muted);">{{ item.status }}</span>
+                            <span class="article-status-text">{{ item.status }}</span>
                           </span>
                         </td>
                       </tr>
@@ -677,18 +642,18 @@
                         <td colspan="4" style="padding:0;">
                           <div class="drill-content"
                                style="margin:2px 0 4px 14px;padding:10px 14px 10px 16px;border-left:2px solid var(--accent);background:var(--bg-stripe);">
-                            <div v-if="loadingArticle" style="font-size:0.8125rem;color:var(--text-muted);">Loading events…</div>
-                            <div v-else-if="articleEvents.length === 0" style="font-size:0.8125rem;color:var(--text-muted);">No events found.</div>
+                            <div v-if="loadingArticle" style="font-size:13px;color:var(--text-muted);">Loading events…</div>
+                            <div v-else-if="articleEvents.length === 0" style="font-size:13px;color:var(--text-muted);">No events found.</div>
                             <div v-for="ev in articleEvents" :key="ev.event_id"
                                  class="ev-row" :class="evRowClass(ev)" style="margin-bottom:4px;">
                               <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
-                                <span class="mono" style="font-size:0.75rem;color:var(--text-muted);">{{ timeOnly(ev.timestamp) }}</span>
-                                <span style="font-weight:500;font-size:0.8125rem;">{{ ev.tool_name || ev.action }}</span>
+                                <span class="mono" style="font-size:12px;color:var(--text-muted);">{{ timeOnly(ev.timestamp) }}</span>
+                                <span style="font-weight:500;font-size:13px;">{{ ev.tool_name || ev.action }}</span>
                                 <span :class="verdictBadgeClass(ev)">{{ ev.verdict || ev.outcome }}</span>
                                 <span :class="stageBadgeClass(ev.stage)">{{ ev.stage }}</span>
-                                <span v-if="ev.latency_ms != null" class="mono" style="font-size:0.75rem;color:var(--text-muted);">{{ formatDuration(ev.latency_ms) }}</span>
+                                <span v-if="ev.latency_ms != null" class="mono" style="font-size:12px;color:var(--text-muted);">{{ formatDuration(ev.latency_ms) }}</span>
                               </div>
-                              <div style="color:var(--text-muted);margin-top:3px;font-size:0.75rem;">{{ truncate(ev.reason, 120) }}</div>
+                              <div style="color:var(--text-muted);margin-top:3px;font-size:12px;">{{ truncate(ev.reason, 120) }}</div>
                             </div>
                           </div>
                         </td>
@@ -705,7 +670,7 @@
                 <div class="section-hdr">
                   <div style="display:flex;align-items:center;gap:10px;">
                     <span class="section-title">Human Oversight Queue</span>
-                    <span class="badge badge-neutral" style="font-size:0.6rem;">Art. 14</span>
+                    <span class="badge badge-neutral" style="font-size:10px;">Art. 14</span>
                   </div>
                   <!-- Compact inline alert — right side of header -->
                   <div v-if="hitlEvents.length > 0" class="hitl-alert">
@@ -743,10 +708,10 @@
                         <td class="td-mono">{{ timeOnly(ev.timestamp) }}</td>
                         <td style="font-weight:500;">{{ ev.agent_id }}</td>
                         <td class="c-accent">{{ ev.tool_name || ev.action }}</td>
-                        <td style="font-size:0.75rem;color:var(--text-muted);max-width:220px;">{{ truncate(ev.reason, 55) }}</td>
+                        <td style="font-size:12px;color:var(--text-muted);max-width:220px;">{{ truncate(ev.reason, 55) }}</td>
                         <td><span :class="stageBadgeClass(ev.stage)">{{ ev.stage }}</span></td>
                         <td class="r">
-                          <span style="display:inline-flex;align-items:center;gap:5px;color:var(--warning);font-size:0.75rem;font-weight:500;">
+                          <span style="display:inline-flex;align-items:center;gap:5px;color:var(--warning);font-size:12px;font-weight:500;">
                             <span class="pulse-dot"></span>
                             Pending review
                           </span>
@@ -754,8 +719,8 @@
                       </tr>
                     </tbody>
                   </table>
-                  <p style="font-size:0.6875rem;color:var(--text-muted);margin-top:12px;">
-                    To approve or reject: <span class="mono" style="font-size:0.6875rem;">POST /api/hitl/{event_id}/approve</span> or <span class="mono" style="font-size:0.6875rem;">/reject</span>
+                  <p style="font-size:11px;color:var(--text-muted);margin-top:12px;">
+                    To approve or reject: <span class="mono" style="font-size:11px;">POST /api/hitl/{event_id}/approve</span> or <span class="mono" style="font-size:11px;">/reject</span>
                   </p>
                 </div>
               </div>
@@ -773,15 +738,15 @@
                   </div>
                   <div style="display:flex;align-items:center;gap:10px;">
                     <div style="display:flex;align-items:center;gap:6px;">
-                      <label style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">Agent:</label>
+                      <label style="font-size:12px;color:var(--text-muted);white-space:nowrap;">Agent:</label>
                       <select v-model="selectedAgent" @change="onAgentChange"
-                              style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:0.75rem;color:var(--text-primary);cursor:pointer;outline:none;">
+                              style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:12px;color:var(--text-primary);cursor:pointer;outline:none;">
                         <option value="">All agents</option>
                         <option v-for="a in agents" :key="a" :value="a">{{ a }}</option>
                       </select>
                     </div>
                     <button @click="refresh()"
-                            style="padding:5px 12px;border-radius:5px;background:transparent;border:1px solid var(--border);font-size:0.75rem;color:var(--text-secondary);cursor:pointer;">
+                            style="padding:5px 12px;border-radius:5px;background:transparent;border:1px solid var(--border);font-size:12px;color:var(--text-secondary);cursor:pointer;">
                       Refresh
                     </button>
                   </div>
@@ -808,7 +773,7 @@
                     <template v-for="session in filteredSessions" :key="session.session_id">
                       <tr @click="toggleSession(session.session_id)">
                         <td>
-                          <span style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;color:var(--text-muted);">{{ truncate(session.session_id, 20) }}</span>
+                          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted);">{{ truncate(session.session_id, 20) }}</span>
                         </td>
                         <td style="font-weight:500;">
                           <span style="display:inline-flex;align-items:center;">
@@ -818,7 +783,7 @@
                         </td>
                         <td class="td-mono">{{ formatTime(session.start_time) }}</td>
                         <td class="r">
-                          <div style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;color:var(--text-muted);">{{ formatDuration(session.duration_ms) }}</div>
+                          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted);">{{ formatDuration(session.duration_ms) }}</div>
                           <div class="dur-bar">
                             <div class="dur-bar-fill" :style="{ width: Math.max(2, (session.duration_ms / maxSessionDuration * 100)) + '%' }"></div>
                           </div>
@@ -838,13 +803,13 @@
                         <td colspan="8" style="padding:0;">
                           <div class="drill-content" style="padding:14px 18px;">
 
-                            <div style="font-size:0.6875rem;font-style:italic;color:var(--text-muted);border-left:2px solid var(--border);padding-left:9px;margin-bottom:12px;line-height:1.55;">
+                            <div style="font-size:11px;font-style:italic;color:var(--text-muted);border-left:2px solid var(--border);padding-left:9px;margin-bottom:12px;line-height:1.55;">
                               Showing ASF-intercepted tool calls only. Agent reasoning steps (LLM turns)
                               are not captured — ASF operates at the tool call boundary.
                             </div>
 
                             <div v-if="expandedSessionInfo"
-                                 style="background:var(--bg-card);border:1px solid var(--border);border-radius:5px;padding:8px 12px;margin-bottom:12px;font-size:0.75rem;display:flex;flex-wrap:wrap;gap:7px;align-items:center;">
+                                 style="background:var(--bg-card);border:1px solid var(--border);border-radius:5px;padding:8px 12px;margin-bottom:12px;font-size:12px;display:flex;flex-wrap:wrap;gap:7px;align-items:center;">
                               <span style="font-weight:600;">{{ expandedSessionInfo.agentId }}</span>
                               <span style="color:var(--text-muted);">·</span>
                               <span style="color:var(--text-secondary);">{{ expandedSessionInfo.framework }}</span>
@@ -852,29 +817,29 @@
                               <span style="color:var(--text-secondary);">Agent model: <span style="color:var(--text-primary);">{{ expandedSessionInfo.model }}</span></span>
                             </div>
 
-                            <div v-if="loadingSession" style="font-size:0.8125rem;color:var(--text-muted);">Loading session events…</div>
-                            <div v-else-if="sessionEvents.length === 0" style="font-size:0.8125rem;color:var(--text-muted);">No events found.</div>
+                            <div v-if="loadingSession" style="font-size:13px;color:var(--text-muted);">Loading session events…</div>
+                            <div v-else-if="sessionEvents.length === 0" style="font-size:13px;color:var(--text-muted);">No events found.</div>
 
                             <div v-for="ev in sessionEvents" :key="ev.event_id"
                                  class="ev-row" :class="evRowClass(ev)">
                               <div style="display:flex;flex-wrap:wrap;align-items:center;gap:7px;">
-                                <span class="mono" style="font-size:0.75rem;color:var(--text-muted);">{{ timeOnly(ev.timestamp) }}</span>
-                                <span style="font-weight:600;font-size:0.8125rem;">{{ ev.tool_name || ev.action }}</span>
+                                <span class="mono" style="font-size:12px;color:var(--text-muted);">{{ timeOnly(ev.timestamp) }}</span>
+                                <span style="font-weight:600;font-size:13px;">{{ ev.tool_name || ev.action }}</span>
                                 <span :class="verdictBadgeClass(ev)">{{ ev.verdict || ev.outcome }}</span>
                                 <span :class="stageBadgeClass(ev.stage)">{{ ev.stage }}</span>
-                                <span v-if="ev.latency_ms != null" class="mono" style="font-size:0.75rem;color:var(--text-muted);">{{ formatDuration(ev.latency_ms) }}</span>
+                                <span v-if="ev.latency_ms != null" class="mono" style="font-size:12px;color:var(--text-muted);">{{ formatDuration(ev.latency_ms) }}</span>
                               </div>
-                              <div style="margin-top:4px;font-size:0.8125rem;">
+                              <div style="margin-top:4px;font-size:13px;">
                                 <span style="color:var(--text-muted);">Reason: </span>
                                 <span style="color:var(--text-secondary);">{{ truncate(ev.reason, 120) }}</span>
                                 <span v-if="ev.reason && ev.reason.length > 120"
-                                      class="c-accent" style="cursor:pointer;font-size:0.75rem;margin-left:4px;"
+                                      class="c-accent" style="cursor:pointer;font-size:12px;margin-left:4px;"
                                       @click.stop="expandReason(ev.event_id)">
                                   {{ expandedReasons.has(ev.event_id) ? 'less' : 'more' }}
                                 </span>
                               </div>
-                              <div v-if="expandedReasons.has(ev.event_id)" style="color:var(--text-secondary);margin-top:3px;font-size:0.8125rem;">{{ ev.reason }}</div>
-                              <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:10px;font-size:0.6875rem;color:var(--text-muted);">
+                              <div v-if="expandedReasons.has(ev.event_id)" style="color:var(--text-secondary);margin-top:3px;font-size:13px;">{{ ev.reason }}</div>
+                              <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--text-muted);">
                                 <span v-if="ev.eu_ai_act_article">EU AI Act: {{ ev.eu_ai_act_article }}{{ ev.eu_ai_act_control ? ' – ' + ev.eu_ai_act_control : '' }}</span>
                                 <span>ASF security model: {{ ev.security_model || 'not recorded' }}</span>
                                 <span v-if="ev.confidence != null">Confidence: {{ (ev.confidence * 100).toFixed(0) }}%</span>
@@ -924,12 +889,6 @@
         },
 
         computed: {
-          blockRateCardStyle() {
-            const r = this.metrics.detection_rate || 0;
-            if (r > 0.8) return '--kpi-color: var(--danger)';
-            if (r < 0.5) return '--kpi-color: var(--success)';
-            return '--kpi-color: var(--warning)';
-          },
           blockRateValueStyle() {
             const r = this.metrics.detection_rate || 0;
             if (r > 0.8) return 'color:var(--danger)';
@@ -957,6 +916,7 @@
             if (id.includes('openhands'))   return { agentId: id, framework: 'OpenHands CodeAct',            model: 'not recorded' };
             if (id.includes('pyrit'))       return { agentId: id, framework: 'PyRIT red-team',               model: 'not recorded' };
             if (id.includes('promptfoo'))   return { agentId: id, framework: 'promptfoo eval',               model: 'not recorded' };
+            if (id.includes('claude-code')) return { agentId: id, framework: 'Claude Code (MCP)',             model: 'claude-sonnet-4-6 via MCP' };
             return { agentId: id, framework: 'unknown framework', model: 'not recorded' };
           },
           maxSessionDuration() {
