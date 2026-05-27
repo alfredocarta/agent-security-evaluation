@@ -149,11 +149,12 @@ def run_config(samples, classify_fn, max_samples=None, group_fn=None, label=""):
     return metrics
 
 
-def configure_env(disable_stage25, disable_stage25b, skip_llm, stage3_backend="llm"):
+def configure_env(disable_stage25, disable_stage25b, skip_llm, stage3_backend="llm", always_stage25=False):
     os.environ["ASF_DISABLE_STAGE25"] = "true" if disable_stage25 else "false"
     os.environ["ASF_DISABLE_STAGE25B"] = "true" if disable_stage25b else "false"
     os.environ["ASF_SKIP_LLM"] = "true" if skip_llm else "false"
     os.environ["ASF_STAGE3_BACKEND"] = stage3_backend
+    os.environ["ASF_ALWAYS_STAGE25"] = "true" if always_stage25 else "false"
 
 
 def reload_interceptor():
@@ -265,36 +266,41 @@ def classify_l15(text):
     return result[0] in BLOCKING_VERDICTS
 
 
-configure_env(disable_stage25=True, disable_stage25b=True, skip_llm=True)
-imod = reload_interceptor()
+import interceptor as imod
+imod = importlib.reload(imod)
 from interceptor import hardened_interceptor
 
 
 def classify_s12(text):
+    configure_env(disable_stage25=True, disable_stage25b=True, skip_llm=True)
     reinstate_benchmark_agent()
     result = hardened_interceptor("benchmark-agent", "communication", text)
     return result[0] in BLOCKING_VERDICTS
 
 
-configure_env(disable_stage25=False, disable_stage25b=False, skip_llm=True)
-imod = importlib.reload(imod)
-from interceptor import hardened_interceptor as hi_s125
-
-
 def classify_s125(text):
+    configure_env(disable_stage25=False, disable_stage25b=False, skip_llm=True)
     reinstate_benchmark_agent()
-    result = hi_s125("benchmark-agent", "communication", text)
+    result = hardened_interceptor("benchmark-agent", "communication", text)
     return result[0] in BLOCKING_VERDICTS
 
 
-configure_env(disable_stage25=False, disable_stage25b=False, skip_llm=False)
-imod = importlib.reload(imod)
-from interceptor import hardened_interceptor as hi_full
-
-
 def classify_full(text):
+    configure_env(disable_stage25=False, disable_stage25b=False, skip_llm=False)
     reinstate_benchmark_agent()
-    result = hi_full("benchmark-agent", "communication", text)
+    result = hardened_interceptor("benchmark-agent", "communication", text)
+    return result[0] in BLOCKING_VERDICTS
+
+
+def classify_always25(text):
+    configure_env(
+        disable_stage25=False,
+        disable_stage25b=False,
+        skip_llm=True,
+        always_stage25=True,
+    )
+    reinstate_benchmark_agent()
+    result = hardened_interceptor("benchmark-agent", "communication", text)
     return result[0] in BLOCKING_VERDICTS
 
 
@@ -342,6 +348,7 @@ benchmark_rows = [
     ("ASF L1.5 only", run_config(eval_samples, classify_l15, group_fn=intent_value, label="ASF L1.5 only")),
     ("ASF Stage 1+2", run_config(eval_samples, classify_s12, group_fn=intent_value, label="ASF Stage 1+2")),
     ("ASF Stage 1+2+2.5", run_config(eval_samples, classify_s125, group_fn=intent_value, label="ASF Stage 1+2+2.5")),
+    ("ASF Always-Stage25", run_config(eval_samples, classify_always25, group_fn=intent_value, label="ASF Always-Stage25")),
     (
         "ASF Full pipeline",
         run_config(eval_samples, classify_full, max_samples=FULL_PIPELINE_LIMIT, label="ASF Full pipeline"),
