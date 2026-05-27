@@ -58,9 +58,10 @@ def run_config(samples, classify_fn, label=""):
     return recall, fpr, precision, f1, avg_latency, total
 
 
-def configure_env(disable_stage25, skip_llm):
-    os.environ["ASF_DISABLE_STAGE25"] = "true" if disable_stage25 else "false"
-    os.environ["ASF_SKIP_LLM"] = "true" if skip_llm else "false"
+def configure_env(disable_stage25, skip_llm, always_stage25=False):
+    os.environ["ASF_DISABLE_STAGE25"]  = "true" if disable_stage25  else "false"
+    os.environ["ASF_SKIP_LLM"]         = "true" if skip_llm         else "false"
+    os.environ["ASF_ALWAYS_STAGE25"]   = "true" if always_stage25   else "false"
 
 
 def reload_interceptor():
@@ -80,39 +81,36 @@ registry.reinstate_agent("benchmark-agent")
 
 from hardening import apply_l1_5_hardening
 
+imod = reload_interceptor()
+from interceptor import hardened_interceptor
+
 
 def classify_l15(text):
     result = apply_l1_5_hardening("benchmark-agent", "communication", text)
     return result[0] in BLOCKING_VERDICTS
 
 
-configure_env(disable_stage25=True, skip_llm=True)
-imod = reload_interceptor()
-from interceptor import hardened_interceptor
-
-
 def classify_s12(text):
+    configure_env(disable_stage25=True, skip_llm=True)
     result = hardened_interceptor("benchmark-agent", "communication", text)
     return result[0] in BLOCKING_VERDICTS
 
 
-configure_env(disable_stage25=False, skip_llm=True)
-imod = importlib.reload(imod)
-from interceptor import hardened_interceptor as hi_s125
-
-
 def classify_s125(text):
-    result = hi_s125("benchmark-agent", "communication", text)
+    configure_env(disable_stage25=False, skip_llm=True)
+    result = hardened_interceptor("benchmark-agent", "communication", text)
     return result[0] in BLOCKING_VERDICTS
 
 
-configure_env(disable_stage25=False, skip_llm=False)
-imod = importlib.reload(imod)
-from interceptor import hardened_interceptor as hi_full
-
-
 def classify_full(text):
-    result = hi_full("benchmark-agent", "communication", text)
+    configure_env(disable_stage25=False, skip_llm=False)
+    result = hardened_interceptor("benchmark-agent", "communication", text)
+    return result[0] in BLOCKING_VERDICTS
+
+
+def classify_always25(text):
+    configure_env(disable_stage25=False, skip_llm=True, always_stage25=True)
+    result = hardened_interceptor("benchmark-agent", "communication", text)
     return result[0] in BLOCKING_VERDICTS
 
 
@@ -122,11 +120,12 @@ def classify_onnx(text):
 
 configs = [
     ("Sigil heuristic-only (peer baseline)", 0.213, 0.0, 1.0, 0.351, None, 546),
-    ("ASF L1.5 only", *run_config(samples, classify_l15, label="ASF L1.5 only")),
-    ("ASF Stage 1+2", *run_config(samples, classify_s12, label="ASF Stage 1+2")),
-    ("ASF Stage 1+2+2.5", *run_config(samples, classify_s125, label="ASF Stage 1+2+2.5")),
-    ("ASF Full pipeline", *run_config(samples, classify_full, label="ASF Full pipeline")),
-    ("ONNX Prompt Guard 86M", *run_config(samples, classify_onnx, label="ONNX Prompt Guard 86M")),
+    ("ASF L1.5 only",      *run_config(samples, classify_l15,      label="ASF L1.5 only")),
+    ("ASF Stage 1+2",      *run_config(samples, classify_s12,      label="ASF Stage 1+2")),
+    ("ASF Stage 1+2+2.5",  *run_config(samples, classify_s125,     label="ASF Stage 1+2+2.5")),
+    ("ASF Always-Stage25", *run_config(samples, classify_always25, label="ASF Always-Stage25")),
+    ("ASF Full pipeline",  *run_config(samples, classify_full,     label="ASF Full pipeline")),
+    ("ONNX Prompt Guard 86M", *run_config(samples, classify_onnx,  label="ONNX Prompt Guard 86M")),
 ]
 
 print()

@@ -76,42 +76,42 @@ def run_config(samples, text_field, classify_fn, label=""):
     return metrics
 
 
-def configure_env(disable_stage25, disable_stage25b, skip_llm):
+def configure_env(disable_stage25, disable_stage25b, skip_llm, always_stage25=False):
     os.environ["ASF_DISABLE_STAGE25"]  = "true" if disable_stage25  else "false"
     os.environ["ASF_DISABLE_STAGE25B"] = "true" if disable_stage25b else "false"
     os.environ["ASF_SKIP_LLM"]         = "true" if skip_llm         else "false"
+    os.environ["ASF_ALWAYS_STAGE25"]   = "true" if always_stage25   else "false"
 
 
 from hardening import apply_l1_5_hardening
+
+import interceptor as imod
+imod = importlib.reload(imod)
+from interceptor import hardened_interceptor
 
 def classify_l15(text):
     registry.reinstate_agent("benchmark-agent")
     return apply_l1_5_hardening("benchmark-agent", "communication", text)[0] in BLOCKING_VERDICTS
 
-configure_env(True, True, True)
-import interceptor as imod
-imod = importlib.reload(imod)
-from interceptor import hardened_interceptor
-
 def classify_s12(text):
+    configure_env(True, True, True)
     registry.reinstate_agent("benchmark-agent")
     return hardened_interceptor("benchmark-agent", "communication", text)[0] in BLOCKING_VERDICTS
 
-configure_env(False, False, True)
-imod = importlib.reload(imod)
-from interceptor import hardened_interceptor as hi_s125
-
 def classify_s125(text):
+    configure_env(False, False, True)
     registry.reinstate_agent("benchmark-agent")
-    return hi_s125("benchmark-agent", "communication", text)[0] in BLOCKING_VERDICTS
-
-configure_env(False, False, False)
-imod = importlib.reload(imod)
-from interceptor import hardened_interceptor as hi_full
+    return hardened_interceptor("benchmark-agent", "communication", text)[0] in BLOCKING_VERDICTS
 
 def classify_full(text):
+    configure_env(False, False, False)
     registry.reinstate_agent("benchmark-agent")
-    return hi_full("benchmark-agent", "communication", text)[0] in BLOCKING_VERDICTS
+    return hardened_interceptor("benchmark-agent", "communication", text)[0] in BLOCKING_VERDICTS
+
+def classify_always25(text):
+    configure_env(False, False, True, always_stage25=True)
+    registry.reinstate_agent("benchmark-agent")
+    return hardened_interceptor("benchmark-agent", "communication", text)[0] in BLOCKING_VERDICTS
 
 def classify_onnx(text):
     return onnx_classify_text(text) in ("DANGEROUS", "UNCERTAIN")
@@ -121,6 +121,7 @@ configs = [
     ("ASF L1.5 only",         classify_l15),
     ("ASF Stage 1+2",         classify_s12),
     ("ASF Stage 1+2+2.5",     classify_s125),
+    ("ASF Always-Stage25",    classify_always25),
     ("ASF Full pipeline",     classify_full),
     ("ONNX Prompt Guard 86M", classify_onnx),
 ]
