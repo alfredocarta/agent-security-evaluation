@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import json
 from pathlib import Path
 
@@ -23,6 +24,7 @@ KEY_CONFIGS = [
     "ASF Stage 1+2+2.5",
     "ASF Always-Stage25",
     "ONNX Prompt Guard 86M",
+    "ASF L1.5 + ONNX (union)",
 ]
 
 
@@ -82,6 +84,14 @@ def fmt_int(value):
     if value is None:
         return "-"
     return str(value)
+
+
+def md_cell(value):
+    return "—" if value == "-" else value
+
+
+def md_escape(value):
+    return str(value).replace("|", "\\|")
 
 
 def print_table(title, rows):
@@ -169,13 +179,97 @@ def print_cross_dataset_summary(loaded):
         )
 
 
+def render_markdown_table(headers, rows):
+    lines = [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join("---" for _header in headers) + " |",
+    ]
+    for row in rows:
+        lines.append(
+            "| " + " | ".join(md_escape(cell) for cell in row) + " |"
+        )
+    return "\n".join(lines)
+
+
+def render_full_markdown_table(title, rows):
+    headers = ["Configuration", "Recall", "FPR", "F1", "Lat", "N"]
+    markdown_rows = []
+    for row in rows:
+        markdown_rows.append(
+            [
+                row["configuration"],
+                md_cell(fmt_pct(row.get("recall"))),
+                md_cell(fmt_pct(row.get("fpr"))),
+                md_cell(fmt_pct(row.get("f1"))),
+                md_cell(fmt_latency(row.get("avg_latency_ms"))),
+                md_cell(fmt_int(row.get("n_samples"))),
+            ]
+        )
+    return f"### {title}\n\n{render_markdown_table(headers, markdown_rows)}"
+
+
+def render_markdown(loaded):
+    sections = ["## Section 1 - Full table per dataset"]
+
+    for key, alias, _filename in DATASETS:
+        results = loaded[key]
+        if key == "mindgard":
+            sections.append(
+                render_full_markdown_table(
+                    f"{alias} - original_sample", results["original_sample"]
+                )
+            )
+            sections.append(
+                render_full_markdown_table(
+                    f"{alias} - modified_sample", results["modified_sample"]
+                )
+            )
+        else:
+            sections.append(render_full_markdown_table(alias, results))
+
+    headers = ["Configuration"] + [alias for _key, alias, _filename in DATASETS]
+    indexed = {
+        key: row_by_config(results)
+        for key, _alias, _filename in DATASETS
+        if key != "mindgard"
+        for results in [loaded[key]]
+    }
+
+    summary_rows = []
+    for config in KEY_CONFIGS:
+        row_cells = [config]
+        for key, _alias, _filename in DATASETS:
+            if key == "mindgard":
+                row_cells.append(md_cell(mindgard_cell(loaded[key], config)))
+                continue
+            row = indexed[key].get(config)
+            row_cells.append(
+                md_cell(fmt_recall_cell(row.get("recall") if row else None))
+            )
+        summary_rows.append(row_cells)
+
+    sections.append("## Section 2 - Cross-dataset summary (key configs only)")
+    sections.append(render_markdown_table(headers, summary_rows))
+    return "\n\n".join(sections) + "\n"
+
+
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--markdown",
+        action="store_true",
+        help="also write benchmarks/summary.md as GitHub-flavored markdown",
+    )
+    args = parser.parse_args()
+
     loaded = {
         key: load_results(BENCHMARKS_DIR / filename)
         for key, _alias, filename in DATASETS
     }
     print_full_tables(loaded)
     print_cross_dataset_summary(loaded)
+    if args.markdown:
+        (BENCHMARKS_DIR / "summary.md").write_text(render_markdown(loaded))
 
 
 if __name__ == "__main__":

@@ -118,6 +118,10 @@ def classify_onnx(text):
     return onnx_classify_text(text) in ("DANGEROUS", "UNCERTAIN")
 
 
+def classify_union(text):
+    return classify_l15(text) or classify_onnx(text)
+
+
 configs = [
     ("Sigil heuristic-only (peer baseline)", 0.213, 0.0, 1.0, 0.351, None, 546),
     ("ASF L1.5 only",      *run_config(samples, classify_l15,      label="ASF L1.5 only")),
@@ -126,6 +130,7 @@ configs = [
     ("ASF Always-Stage25", *run_config(samples, classify_always25, label="ASF Always-Stage25")),
     ("ASF Full pipeline",  *run_config(samples, classify_full,     label="ASF Full pipeline")),
     ("ONNX Prompt Guard 86M", *run_config(samples, classify_onnx,  label="ONNX Prompt Guard 86M")),
+    ("ASF L1.5 + ONNX (union)", *run_config(samples, classify_union, label="ASF L1.5 + ONNX (union)")),
 ]
 
 print()

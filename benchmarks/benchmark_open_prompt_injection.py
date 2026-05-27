@@ -308,6 +308,10 @@ def classify_onnx(text):
     return onnx_classify_text(text) in ("DANGEROUS", "UNCERTAIN")
 
 
+def classify_union(text):
+    return classify_l15(text) or classify_onnx(text)
+
+
 baseline_rows = [
     (
         "Sigil heuristic v1 (OPI, peer)",
@@ -354,6 +358,7 @@ benchmark_rows = [
         run_config(eval_samples, classify_full, max_samples=FULL_PIPELINE_LIMIT, label="ASF Full pipeline"),
     ),
     ("ONNX Prompt Guard 86M", run_config(eval_samples, classify_onnx, group_fn=intent_value, label="ONNX Prompt Guard 86M")),
+    ("ASF L1.5 + ONNX (union)", run_config(eval_samples, classify_union, group_fn=intent_value, label="ASF L1.5 + ONNX (union)")),
 ]
 
 print()

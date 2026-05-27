@@ -124,6 +124,10 @@ def classify_onnx(text):
     return onnx_classify_text(text) in ("DANGEROUS", "UNCERTAIN")
 
 
+def classify_union(text):
+    return classify_l15(text) or classify_onnx(text)
+
+
 benchmark_rows = [
     ("ASF L1.5 only",         run_config(samples, classify_l15,     label="ASF L1.5 only")),
     ("ASF Stage 1+2",         run_config(samples, classify_s12,     label="ASF Stage 1+2")),
@@ -131,6 +135,7 @@ benchmark_rows = [
     ("ASF Always-Stage25",    run_config(samples, classify_always25, label="ASF Always-Stage25")),
     ("ASF Full pipeline",     run_config(samples, classify_full,    label="ASF Full pipeline")),
     ("ONNX Prompt Guard 86M", run_config(samples, classify_onnx,    label="ONNX Prompt Guard 86M")),
+    ("ASF L1.5 + ONNX (union)", run_config(samples, classify_union, label="ASF L1.5 + ONNX (union)")),
 ]
 
 print()

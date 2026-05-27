@@ -117,6 +117,10 @@ def classify_onnx(text):
     return onnx_classify_text(text) in ("DANGEROUS", "UNCERTAIN")
 
 
+def classify_union(text):
+    return classify_l15(text) or classify_onnx(text)
+
+
 configs = [
     ("ASF L1.5 only",         classify_l15),
     ("ASF Stage 1+2",         classify_s12),
@@ -124,6 +128,7 @@ configs = [
     ("ASF Always-Stage25",    classify_always25),
     ("ASF Full pipeline",     classify_full),
     ("ONNX Prompt Guard 86M", classify_onnx),
+    ("ASF L1.5 + ONNX (union)", classify_union),
 ]
 
 print()
