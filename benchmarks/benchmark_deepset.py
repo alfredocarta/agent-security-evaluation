@@ -3,12 +3,18 @@ import json
 import os
 import sys
 import time
+from datetime import datetime
 
+from tqdm import tqdm
 
 ASF_PATH = "/Users/alfredo/Projects/agent-security-framework"
 BLOCKING_VERDICTS = ("DENY", "KILL_SWITCH", "BLOCK", "HITL")
+RESULTS_PATH = "benchmarks/deepset_results_full.json"
 
 sys.path.insert(0, ASF_PATH)
+sys.stdout.reconfigure(line_buffering=True)
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
 
 with open("benchmarks/deepset_prompt_injections.json") as f:
@@ -22,12 +28,12 @@ print(
 )
 
 
-def run_config(samples, classify_fn, max_samples=None):
-    if max_samples:
-        samples = samples[:max_samples]
+def run_config(samples, classify_fn, label=""):
     tp = fp = tn = fn = 0
     latencies = []
-    for s in samples:
+    start = datetime.now()
+    print(f"\n[{start.strftime('%H:%M:%S')}] Starting: {label} ({len(samples)} samples)")
+    for s in tqdm(samples, desc=label, unit="sample", dynamic_ncols=True, file=sys.stdout):
         t0 = time.time()
         blocked = classify_fn(s["text"])
         latencies.append((time.time() - t0) * 1000)
@@ -40,6 +46,9 @@ def run_config(samples, classify_fn, max_samples=None):
             fp += 1
         else:
             tn += 1
+    end = datetime.now()
+    elapsed = (end - start).total_seconds()
+    print(f"[{end.strftime('%H:%M:%S')}] Done: {label} in {elapsed:.0f}s")
     total = tp + fp + tn + fn
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0
     fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
@@ -61,6 +70,7 @@ def reload_interceptor():
 
 
 import registry
+from stage3_onnx import classify_text as onnx_classify_text
 
 registry.add_or_update_agent(
     "benchmark-agent", risk_level="high", permissions=["communication"]
@@ -106,12 +116,17 @@ def classify_full(text):
     return result[0] in BLOCKING_VERDICTS
 
 
+def classify_onnx(text):
+    return onnx_classify_text(text) in ("DANGEROUS", "UNCERTAIN")
+
+
 configs = [
     ("Sigil heuristic-only (peer baseline)", 0.213, 0.0, 1.0, 0.351, None, 546),
-    ("ASF L1.5 only", *run_config(samples, classify_l15)),
-    ("ASF Stage 1+2", *run_config(samples, classify_s12)),
-    ("ASF Stage 1+2+2.5", *run_config(samples, classify_s125)),
-    ("ASF Full pipeline", *run_config(samples[:100], classify_full, max_samples=100)),
+    ("ASF L1.5 only", *run_config(samples, classify_l15, label="ASF L1.5 only")),
+    ("ASF Stage 1+2", *run_config(samples, classify_s12, label="ASF Stage 1+2")),
+    ("ASF Stage 1+2+2.5", *run_config(samples, classify_s125, label="ASF Stage 1+2+2.5")),
+    ("ASF Full pipeline", *run_config(samples, classify_full, label="ASF Full pipeline")),
+    ("ONNX Prompt Guard 86M", *run_config(samples, classify_onnx, label="ONNX Prompt Guard 86M")),
 ]
 
 print()
@@ -143,6 +158,6 @@ for row in configs:
             "n_samples": n,
         }
     )
-with open("benchmarks/deepset_results.json", "w") as f:
+with open(RESULTS_PATH, "w") as f:
     json.dump(results, f, indent=2)
-print("\nResults saved to benchmarks/deepset_results.json")
+print(f"\nResults saved to {RESULTS_PATH}")

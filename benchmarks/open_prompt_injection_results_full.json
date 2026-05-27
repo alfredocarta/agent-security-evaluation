@@ -1,0 +1,503 @@
+{
+  "dataset": {
+    "path": "benchmarks/open_prompt_injection.json",
+    "n_samples": 67200,
+    "n_injection": 33600,
+    "n_benign": 33600,
+    "evaluation_n_samples": 67200,
+    "evaluation_n_injection": 33600,
+    "evaluation_n_benign": 33600,
+    "evaluation_limit": 0,
+    "intent_distribution": {
+      "spam": 9600,
+      "jfleg": 9600,
+      "gigaword": 9600,
+      "hsol": 9600,
+      "mrpc": 9600,
+      "rte": 9600,
+      "sentiment": 9600
+    },
+    "attack_type_distribution": {
+      "naive": 16800,
+      "ignore": 16800,
+      "escape": 16800,
+      "combine": 16800
+    }
+  },
+  "baselines": [
+    {
+      "configuration": "Sigil heuristic (peer baseline)",
+      "recall": 0.213,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.351,
+      "avg_latency_ms": null,
+      "n_samples": 546
+    },
+    {
+      "configuration": "ASF deepset recall (reference)",
+      "recall": 0.044,
+      "fpr": 0.006,
+      "precision": 0.818,
+      "f1": 0.084,
+      "avg_latency_ms": null,
+      "n_samples": 546
+    },
+    {
+      "configuration": "ONNX deepset recall (reference)",
+      "recall": 0.236,
+      "fpr": 0.003,
+      "precision": 0.98,
+      "f1": 0.381,
+      "avg_latency_ms": null,
+      "n_samples": 546
+    }
+  ],
+  "results": [
+    {
+      "configuration": "ASF L1.5 only",
+      "recall": 0.5,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.6667,
+      "avg_latency_ms": 2.1,
+      "n_samples": 67200,
+      "tp": 16800,
+      "fp": 0,
+      "tn": 33600,
+      "fn": 16800
+    },
+    {
+      "configuration": "ASF Stage 1+2",
+      "recall": 0.5,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.6667,
+      "avg_latency_ms": 2.4,
+      "n_samples": 67200,
+      "tp": 16800,
+      "fp": 0,
+      "tn": 33600,
+      "fn": 16800
+    },
+    {
+      "configuration": "ASF Stage 1+2+2.5",
+      "recall": 0.5,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.6667,
+      "avg_latency_ms": 2.3,
+      "n_samples": 67200,
+      "tp": 16800,
+      "fp": 0,
+      "tn": 33600,
+      "fn": 16800
+    },
+    {
+      "configuration": "ASF Full pipeline",
+      "recall": 0.5,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.6667,
+      "avg_latency_ms": 2.4,
+      "n_samples": 67200,
+      "tp": 16800,
+      "fp": 0,
+      "tn": 33600,
+      "fn": 16800
+    },
+    {
+      "configuration": "ONNX Prompt Guard 86M",
+      "recall": 0.5228,
+      "fpr": 0.0014,
+      "precision": 0.9973,
+      "f1": 0.686,
+      "avg_latency_ms": 68.3,
+      "n_samples": 67200,
+      "tp": 17566,
+      "fp": 48,
+      "tn": 33552,
+      "fn": 16034
+    }
+  ],
+  "by_intent": {
+    "gigaword": [
+      {
+        "configuration": "ASF L1.5 only",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.0,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ASF Stage 1+2",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.3,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ASF Stage 1+2+2.5",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.3,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ONNX Prompt Guard 86M",
+        "recall": 0.5004,
+        "fpr": 0.0017,
+        "precision": 0.9967,
+        "f1": 0.6663,
+        "avg_latency_ms": 63.0,
+        "n_samples": 9600,
+        "tp": 2402,
+        "fp": 8,
+        "tn": 4792,
+        "fn": 2398
+      }
+    ],
+    "hsol": [
+      {
+        "configuration": "ASF L1.5 only",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.1,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ASF Stage 1+2",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.4,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ASF Stage 1+2+2.5",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.3,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ONNX Prompt Guard 86M",
+        "recall": 0.6496,
+        "fpr": 0.0008,
+        "precision": 0.9987,
+        "f1": 0.7872,
+        "avg_latency_ms": 68.3,
+        "n_samples": 9600,
+        "tp": 3118,
+        "fp": 4,
+        "tn": 4796,
+        "fn": 1682
+      }
+    ],
+    "jfleg": [
+      {
+        "configuration": "ASF L1.5 only",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.1,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ASF Stage 1+2",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.4,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ASF Stage 1+2+2.5",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.3,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ONNX Prompt Guard 86M",
+        "recall": 0.5025,
+        "fpr": 0.0017,
+        "precision": 0.9967,
+        "f1": 0.6681,
+        "avg_latency_ms": 59.4,
+        "n_samples": 9600,
+        "tp": 2412,
+        "fp": 8,
+        "tn": 4792,
+        "fn": 2388
+      }
+    ],
+    "mrpc": [
+      {
+        "configuration": "ASF L1.5 only",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.1,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ASF Stage 1+2",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.5,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ASF Stage 1+2+2.5",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.4,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ONNX Prompt Guard 86M",
+        "recall": 0.5012,
+        "fpr": 0.0017,
+        "precision": 0.9967,
+        "f1": 0.667,
+        "avg_latency_ms": 78.4,
+        "n_samples": 9600,
+        "tp": 2406,
+        "fp": 8,
+        "tn": 4792,
+        "fn": 2394
+      }
+    ],
+    "rte": [
+      {
+        "configuration": "ASF L1.5 only",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.2,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ASF Stage 1+2",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.5,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ASF Stage 1+2+2.5",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.5,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ONNX Prompt Guard 86M",
+        "recall": 0.5021,
+        "fpr": 0.0017,
+        "precision": 0.9967,
+        "f1": 0.6678,
+        "avg_latency_ms": 85.6,
+        "n_samples": 9600,
+        "tp": 2410,
+        "fp": 8,
+        "tn": 4792,
+        "fn": 2390
+      }
+    ],
+    "sentiment": [
+      {
+        "configuration": "ASF L1.5 only",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.0,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ASF Stage 1+2",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.3,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ASF Stage 1+2+2.5",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.3,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ONNX Prompt Guard 86M",
+        "recall": 0.5012,
+        "fpr": 0.0017,
+        "precision": 0.9967,
+        "f1": 0.667,
+        "avg_latency_ms": 61.8,
+        "n_samples": 9600,
+        "tp": 2406,
+        "fp": 8,
+        "tn": 4792,
+        "fn": 2394
+      }
+    ],
+    "spam": [
+      {
+        "configuration": "ASF L1.5 only",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.0,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ASF Stage 1+2",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.3,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ASF Stage 1+2+2.5",
+        "recall": 0.5,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "f1": 0.6667,
+        "avg_latency_ms": 2.3,
+        "n_samples": 9600,
+        "tp": 2400,
+        "fp": 0,
+        "tn": 4800,
+        "fn": 2400
+      },
+      {
+        "configuration": "ONNX Prompt Guard 86M",
+        "recall": 0.5025,
+        "fpr": 0.0008,
+        "precision": 0.9983,
+        "f1": 0.6685,
+        "avg_latency_ms": 61.8,
+        "n_samples": 9600,
+        "tp": 2412,
+        "fp": 4,
+        "tn": 4796,
+        "fn": 2388
+      }
+    ]
+  }
+}

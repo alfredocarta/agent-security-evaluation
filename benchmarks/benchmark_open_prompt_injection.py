@@ -4,15 +4,18 @@ import os
 import sys
 import time
 from collections import Counter, defaultdict
+from datetime import datetime
+
+from tqdm import tqdm
 
 
 ASF_PATH = "/Users/alfredo/Projects/agent-security-framework"
 DATASET_PATH = "benchmarks/open_prompt_injection.json"
-RESULTS_PATH = "benchmarks/open_prompt_injection_results.json"
+RESULTS_PATH = "benchmarks/open_prompt_injection_results_full.json"
 BLOCKING_VERDICTS = ("DENY", "KILL_SWITCH", "BLOCK", "HITL")
 INJECTION_LABELS = {"1", "true", "injection", "prompt_injection", "malicious", "dangerous"}
 BENIGN_LABELS = {"0", "false", "benign", "safe", "legitimate", "normal"}
-FULL_PIPELINE_LIMIT = 100
+FULL_PIPELINE_LIMIT = 0
 DEFAULT_EVAL_LIMIT = 100
 
 
@@ -113,13 +116,15 @@ def update_counts(counts, injection, blocked, latency):
         counts["tn"] += 1
 
 
-def run_config(samples, classify_fn, max_samples=None, group_fn=None):
+def run_config(samples, classify_fn, max_samples=None, group_fn=None, label=""):
     if max_samples:
         samples = samples[:max_samples]
 
     counts = empty_counts()
     grouped = defaultdict(empty_counts)
-    for sample in samples:
+    start = datetime.now()
+    print(f"\n[{start.strftime('%H:%M:%S')}] Starting: {label} ({len(samples)} samples)")
+    for sample in tqdm(samples, desc=label, unit="sample", dynamic_ncols=True, file=sys.stdout):
         text = sample_text(sample)
         t0 = time.time()
         blocked = classify_fn(text)
@@ -132,6 +137,9 @@ def run_config(samples, classify_fn, max_samples=None, group_fn=None):
             if group:
                 update_counts(grouped[group], injection, blocked, latency)
 
+    end = datetime.now()
+    elapsed = (end - start).total_seconds()
+    print(f"[{end.strftime('%H:%M:%S')}] Done: {label} in {elapsed:.0f}s")
     metrics = finalize_counts(counts)
     if group_fn:
         metrics["by_group"] = {
@@ -296,49 +304,49 @@ def classify_onnx(text):
 
 baseline_rows = [
     (
-        "Sigil heuristic (peer baseline)",
+        "Sigil heuristic v1 (OPI, peer)",
         {
-            "recall": 0.213,
+            "recall": 0.458,
             "fpr": 0.0,
             "precision": 1.0,
-            "f1": 0.351,
-            "avg_latency_ms": None,
-            "n_samples": 546,
+            "f1": 0.628,
+            "avg_latency_ms": 1.1,
+            "n_samples": 67200,
         },
     ),
     (
-        "ASF deepset recall (reference)",
+        "Sigil heuristic v2 (OPI, peer)",
         {
-            "recall": 0.044,
-            "fpr": 0.006,
-            "precision": 0.818,
-            "f1": 0.084,
-            "avg_latency_ms": None,
-            "n_samples": 546,
+            "recall": 0.535,
+            "fpr": 0.0,
+            "precision": 1.0,
+            "f1": 0.697,
+            "avg_latency_ms": 1.1,
+            "n_samples": 67200,
         },
     ),
     (
-        "ONNX deepset recall (reference)",
+        "ONNX Prompt Guard 86M (Sigil run, OPI)",
         {
-            "recall": 0.236,
-            "fpr": 0.003,
-            "precision": 0.980,
-            "f1": 0.381,
+            "recall": 0.523,
+            "fpr": 0.001,
+            "precision": 0.997,
+            "f1": 0.686,
             "avg_latency_ms": None,
-            "n_samples": 546,
+            "n_samples": 67200,
         },
     ),
 ]
 
 benchmark_rows = [
-    ("ASF L1.5 only", run_config(eval_samples, classify_l15, group_fn=intent_value)),
-    ("ASF Stage 1+2", run_config(eval_samples, classify_s12, group_fn=intent_value)),
-    ("ASF Stage 1+2+2.5", run_config(eval_samples, classify_s125, group_fn=intent_value)),
+    ("ASF L1.5 only", run_config(eval_samples, classify_l15, group_fn=intent_value, label="ASF L1.5 only")),
+    ("ASF Stage 1+2", run_config(eval_samples, classify_s12, group_fn=intent_value, label="ASF Stage 1+2")),
+    ("ASF Stage 1+2+2.5", run_config(eval_samples, classify_s125, group_fn=intent_value, label="ASF Stage 1+2+2.5")),
     (
         "ASF Full pipeline",
-        run_config(eval_samples, classify_full, max_samples=FULL_PIPELINE_LIMIT),
+        run_config(eval_samples, classify_full, max_samples=FULL_PIPELINE_LIMIT, label="ASF Full pipeline"),
     ),
-    ("ONNX Prompt Guard 86M", run_config(eval_samples, classify_onnx, group_fn=intent_value)),
+    ("ONNX Prompt Guard 86M", run_config(eval_samples, classify_onnx, group_fn=intent_value, label="ONNX Prompt Guard 86M")),
 ]
 
 print()

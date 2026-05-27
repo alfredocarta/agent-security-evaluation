@@ -1,0 +1,75 @@
+{
+  "dataset": {
+    "path": "benchmarks/toxic_chat.json",
+    "n_samples": 5082,
+    "n_toxic": 384,
+    "n_benign": 4698
+  },
+  "results": [
+    {
+      "configuration": "ASF L1.5 only",
+      "recall": 0.2604,
+      "fpr": 0.1132,
+      "precision": 0.1582,
+      "f1": 0.1969,
+      "avg_latency_ms": 5.8,
+      "n_samples": 5082,
+      "tp": 100,
+      "fp": 532,
+      "tn": 4166,
+      "fn": 284
+    },
+    {
+      "configuration": "ASF Stage 1+2",
+      "recall": 0.2604,
+      "fpr": 0.1132,
+      "precision": 0.1582,
+      "f1": 0.1969,
+      "avg_latency_ms": 6.7,
+      "n_samples": 5082,
+      "tp": 100,
+      "fp": 532,
+      "tn": 4166,
+      "fn": 284
+    },
+    {
+      "configuration": "ASF Stage 1+2+2.5",
+      "recall": 0.2604,
+      "fpr": 0.1132,
+      "precision": 0.1582,
+      "f1": 0.1969,
+      "avg_latency_ms": 6.9,
+      "n_samples": 5082,
+      "tp": 100,
+      "fp": 532,
+      "tn": 4166,
+      "fn": 284
+    },
+    {
+      "configuration": "ASF Full pipeline",
+      "recall": 0.2604,
+      "fpr": 0.1132,
+      "precision": 0.1582,
+      "f1": 0.1969,
+      "avg_latency_ms": 6.5,
+      "n_samples": 5082,
+      "tp": 100,
+      "fp": 532,
+      "tn": 4166,
+      "fn": 284
+    },
+    {
+      "configuration": "ONNX Prompt Guard 86M",
+      "recall": 0.2578,
+      "fpr": 0.0138,
+      "precision": 0.6037,
+      "f1": 0.3613,
+      "avg_latency_ms": 228.8,
+      "n_samples": 5082,
+      "tp": 99,
+      "fp": 65,
+      "tn": 4633,
+      "fn": 285
+    }
+  ]
+}

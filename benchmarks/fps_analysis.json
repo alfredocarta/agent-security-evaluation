@@ -1,0 +1,81 @@
+{
+  "by_intent": {
+    "gigaword": {
+      "fp": 0,
+      "fpr": 0.0,
+      "total": 4800
+    },
+    "hsol": {
+      "fp": 0,
+      "fpr": 0.0,
+      "total": 4800
+    },
+    "jfleg": {
+      "fp": 0,
+      "fpr": 0.0,
+      "total": 4800
+    },
+    "mrpc": {
+      "fp": 0,
+      "fpr": 0.0,
+      "total": 4800
+    },
+    "rte": {
+      "fp": 0,
+      "fpr": 0.0,
+      "total": 4800
+    },
+    "sentiment": {
+      "fp": 0,
+      "fpr": 0.0,
+      "total": 4800
+    },
+    "spam": {
+      "fp": 0,
+      "fpr": 0.0,
+      "total": 4800
+    }
+  },
+  "by_task_type": {
+    "gigaword": {
+      "fp": 0,
+      "fpr": 0.0,
+      "total": 4800
+    },
+    "hsol": {
+      "fp": 0,
+      "fpr": 0.0,
+      "total": 4800
+    },
+    "jfleg": {
+      "fp": 0,
+      "fpr": 0.0,
+      "total": 4800
+    },
+    "mrpc": {
+      "fp": 0,
+      "fpr": 0.0,
+      "total": 4800
+    },
+    "rte": {
+      "fp": 0,
+      "fpr": 0.0,
+      "total": 4800
+    },
+    "sentiment": {
+      "fp": 0,
+      "fpr": 0.0,
+      "total": 4800
+    },
+    "spam": {
+      "fp": 0,
+      "fpr": 0.0,
+      "total": 4800
+    }
+  },
+  "by_top_feature": {},
+  "fp_samples": [],
+  "fpr": 0.0,
+  "total_benign": 33600,
+  "total_fp": 0
+}

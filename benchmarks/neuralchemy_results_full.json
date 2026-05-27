@@ -1,0 +1,335 @@
+{
+  "dataset": {
+    "path": "benchmarks/neuralchemy_prompt_injection.json",
+    "n_samples": 4391,
+    "n_injection": 2650,
+    "n_benign": 1741,
+    "category_distribution": {
+      "benign": 1699,
+      "crescendo": 9,
+      "direct_injection": 1397,
+      "encoding_obfuscation": 6,
+      "indirect_injection": 8,
+      "jailbreak": 291,
+      "many_shot": 5,
+      "persona_replacement": 25,
+      "system_extraction": 10,
+      "token_smuggling": 27,
+      "edge_case": 42,
+      "adversarial": 383,
+      "prompt_injection": 16,
+      "encoding": 177,
+      "response_manipulation": 13,
+      "system_manipulation": 29,
+      "training_extraction": 68,
+      "context_confusion": 16,
+      "instruction_override": 21,
+      "control": 17,
+      "multi_turn": 12,
+      "rag_poisoning": 26,
+      "agent_manipulation": 25,
+      "payload_injection": 10,
+      "model_fingerprinting": 16,
+      "prompt_extraction": 14,
+      "output_manipulation": 16,
+      "prompt_leak": 3,
+      "code_execution": 4,
+      "chain_of_thought": 2,
+      "token_injection": 4
+    },
+    "severity_distribution": {
+      "": 1741,
+      "low": 26,
+      "medium": 1631,
+      "critical": 95,
+      "high": 898
+    }
+  },
+  "results": [
+    {
+      "configuration": "ASF L1.5 only",
+      "recall": 0.2268,
+      "fpr": 0.0023,
+      "precision": 0.9934,
+      "f1": 0.3693,
+      "avg_latency_ms": 1.9,
+      "n_samples": 4391,
+      "tp": 601,
+      "fp": 4,
+      "tn": 1737,
+      "fn": 2049
+    },
+    {
+      "configuration": "ASF Stage 1+2",
+      "recall": 0.2294,
+      "fpr": 0.0023,
+      "precision": 0.9935,
+      "f1": 0.3728,
+      "avg_latency_ms": 2.9,
+      "n_samples": 4391,
+      "tp": 608,
+      "fp": 4,
+      "tn": 1737,
+      "fn": 2042
+    },
+    {
+      "configuration": "ASF Stage 1+2+2.5",
+      "recall": 0.2294,
+      "fpr": 0.0023,
+      "precision": 0.9935,
+      "f1": 0.3728,
+      "avg_latency_ms": 2.5,
+      "n_samples": 4391,
+      "tp": 608,
+      "fp": 4,
+      "tn": 1737,
+      "fn": 2042
+    },
+    {
+      "configuration": "ASF Full pipeline",
+      "recall": 0.2294,
+      "fpr": 0.0023,
+      "precision": 0.9935,
+      "f1": 0.3728,
+      "avg_latency_ms": 2.3,
+      "n_samples": 4391,
+      "tp": 608,
+      "fp": 4,
+      "tn": 1737,
+      "fn": 2042
+    },
+    {
+      "configuration": "ONNX Prompt Guard 86M",
+      "recall": 0.5411,
+      "fpr": 0.0391,
+      "precision": 0.9547,
+      "f1": 0.6908,
+      "avg_latency_ms": 33.9,
+      "n_samples": 4391,
+      "tp": 1434,
+      "fp": 68,
+      "tn": 1673,
+      "fn": 1216
+    }
+  ],
+  "by_category_l15": {
+    "benign": {
+      "recall": 0,
+      "fpr": 0.0024,
+      "f1": 0,
+      "n_samples": 1699
+    },
+    "crescendo": {
+      "recall": 0.0,
+      "fpr": 0,
+      "f1": 0,
+      "n_samples": 9
+    },
+    "direct_injection": {
+      "recall": 0.0959,
+      "fpr": 0,
+      "f1": 0.175,
+      "n_samples": 1397
+    },
+    "encoding_obfuscation": {
+      "recall": 0.6667,
+      "fpr": 0,
+      "f1": 0.8,
+      "n_samples": 6
+    },
+    "indirect_injection": {
+      "recall": 0.25,
+      "fpr": 0,
+      "f1": 0.4,
+      "n_samples": 8
+    },
+    "jailbreak": {
+      "recall": 0.2062,
+      "fpr": 0,
+      "f1": 0.3419,
+      "n_samples": 291
+    },
+    "many_shot": {
+      "recall": 0.0,
+      "fpr": 0,
+      "f1": 0,
+      "n_samples": 5
+    },
+    "persona_replacement": {
+      "recall": 0.32,
+      "fpr": 0,
+      "f1": 0.4848,
+      "n_samples": 25
+    },
+    "system_extraction": {
+      "recall": 0.0,
+      "fpr": 0,
+      "f1": 0,
+      "n_samples": 10
+    },
+    "token_smuggling": {
+      "recall": 0.5926,
+      "fpr": 0,
+      "f1": 0.7442,
+      "n_samples": 27
+    },
+    "edge_case": {
+      "recall": 0,
+      "fpr": 0.0,
+      "f1": 0,
+      "n_samples": 42
+    },
+    "adversarial": {
+      "recall": 0.4543,
+      "fpr": 0,
+      "f1": 0.6248,
+      "n_samples": 383
+    },
+    "prompt_injection": {
+      "recall": 0.5625,
+      "fpr": 0,
+      "f1": 0.72,
+      "n_samples": 16
+    },
+    "encoding": {
+      "recall": 0.3333,
+      "fpr": 0,
+      "f1": 0.5,
+      "n_samples": 177
+    },
+    "response_manipulation": {
+      "recall": 0.4615,
+      "fpr": 0,
+      "f1": 0.6316,
+      "n_samples": 13
+    },
+    "system_manipulation": {
+      "recall": 0.3793,
+      "fpr": 0,
+      "f1": 0.55,
+      "n_samples": 29
+    },
+    "training_extraction": {
+      "recall": 0.3529,
+      "fpr": 0,
+      "f1": 0.5217,
+      "n_samples": 68
+    },
+    "context_confusion": {
+      "recall": 0.625,
+      "fpr": 0,
+      "f1": 0.7692,
+      "n_samples": 16
+    },
+    "instruction_override": {
+      "recall": 0.619,
+      "fpr": 0,
+      "f1": 0.7647,
+      "n_samples": 21
+    },
+    "control": {
+      "recall": 0.4118,
+      "fpr": 0,
+      "f1": 0.5833,
+      "n_samples": 17
+    },
+    "multi_turn": {
+      "recall": 0.4167,
+      "fpr": 0,
+      "f1": 0.5882,
+      "n_samples": 12
+    },
+    "rag_poisoning": {
+      "recall": 0.5385,
+      "fpr": 0,
+      "f1": 0.7,
+      "n_samples": 26
+    },
+    "agent_manipulation": {
+      "recall": 0.36,
+      "fpr": 0,
+      "f1": 0.5294,
+      "n_samples": 25
+    },
+    "payload_injection": {
+      "recall": 0.6,
+      "fpr": 0,
+      "f1": 0.75,
+      "n_samples": 10
+    },
+    "model_fingerprinting": {
+      "recall": 0.5625,
+      "fpr": 0,
+      "f1": 0.72,
+      "n_samples": 16
+    },
+    "prompt_extraction": {
+      "recall": 0.6429,
+      "fpr": 0,
+      "f1": 0.7826,
+      "n_samples": 14
+    },
+    "output_manipulation": {
+      "recall": 0.375,
+      "fpr": 0,
+      "f1": 0.5455,
+      "n_samples": 16
+    },
+    "prompt_leak": {
+      "recall": 0.6667,
+      "fpr": 0,
+      "f1": 0.8,
+      "n_samples": 3
+    },
+    "code_execution": {
+      "recall": 0.5,
+      "fpr": 0,
+      "f1": 0.6667,
+      "n_samples": 4
+    },
+    "chain_of_thought": {
+      "recall": 0.5,
+      "fpr": 0,
+      "f1": 0.6667,
+      "n_samples": 2
+    },
+    "token_injection": {
+      "recall": 0.25,
+      "fpr": 0,
+      "f1": 0.4,
+      "n_samples": 4
+    }
+  },
+  "by_severity_l15": {
+    "": {
+      "recall": 0,
+      "fpr": 0.0023,
+      "f1": 0,
+      "n_samples": 1741
+    },
+    "low": {
+      "recall": 0.3077,
+      "fpr": 0,
+      "f1": 0.4706,
+      "n_samples": 26
+    },
+    "medium": {
+      "recall": 0.1386,
+      "fpr": 0,
+      "f1": 0.2434,
+      "n_samples": 1631
+    },
+    "critical": {
+      "recall": 0.3368,
+      "fpr": 0,
+      "f1": 0.5039,
+      "n_samples": 95
+    },
+    "high": {
+      "recall": 0.3731,
+      "fpr": 0,
+      "f1": 0.5434,
+      "n_samples": 898
+    }
+  }
+}
