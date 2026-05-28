@@ -17,6 +17,7 @@ DATASETS = [
     ("safeguard", "safeguard", "safeguard_results_full.json"),
     ("toxic", "toxic-chat", "toxic_chat_results_full.json"),
     ("jailbreak", "jailbreakbench", "jailbreakbench_results_full.json"),
+    ("spml", "spml", "spml_results_full.json"),
 ]
 
 KEY_CONFIGS = [

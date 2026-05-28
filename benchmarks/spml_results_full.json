@@ -1,0 +1,196 @@
+{
+  "dataset": {
+    "path": "benchmarks/spml_prompt_injection.json",
+    "n_samples": 2000,
+    "n_injection": 1000,
+    "n_benign": 1000,
+    "degree_distribution": {
+      "3": 188,
+      "5": 214,
+      "10": 66,
+      "0": 1000,
+      "4": 140,
+      "1": 191,
+      "2": 136,
+      "7": 65
+    }
+  },
+  "results": [
+    {
+      "configuration": "ASF L1.5 only",
+      "recall": 0.087,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.1601,
+      "avg_latency_ms": 3.3,
+      "n_samples": 2000,
+      "tp": 87,
+      "fp": 0,
+      "tn": 1000,
+      "fn": 913
+    },
+    {
+      "configuration": "ASF Stage 1+2",
+      "recall": 0.131,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.2317,
+      "avg_latency_ms": 4.7,
+      "n_samples": 2000,
+      "tp": 131,
+      "fp": 0,
+      "tn": 1000,
+      "fn": 869
+    },
+    {
+      "configuration": "ASF Stage 1+2+2.5",
+      "recall": 0.131,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.2317,
+      "avg_latency_ms": 6.0,
+      "n_samples": 2000,
+      "tp": 131,
+      "fp": 0,
+      "tn": 1000,
+      "fn": 869
+    },
+    {
+      "configuration": "ASF Full pipeline",
+      "recall": 0.131,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.2317,
+      "avg_latency_ms": 5.8,
+      "n_samples": 2000,
+      "tp": 131,
+      "fp": 0,
+      "tn": 1000,
+      "fn": 869
+    },
+    {
+      "configuration": "ONNX Prompt Guard 86M",
+      "recall": 0.525,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.6885,
+      "avg_latency_ms": 68.1,
+      "n_samples": 2000,
+      "tp": 525,
+      "fp": 0,
+      "tn": 1000,
+      "fn": 475
+    },
+    {
+      "configuration": "ASF L1.5 + ONNX (union)",
+      "recall": 0.529,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.692,
+      "avg_latency_ms": 82.9,
+      "n_samples": 2000,
+      "tp": 529,
+      "fp": 0,
+      "tn": 1000,
+      "fn": 471
+    }
+  ],
+  "by_degree": {
+    "3": {
+      "tp": 16,
+      "fp": 0,
+      "tn": 0,
+      "fn": 172,
+      "recall": 0.0851063829787234,
+      "fpr": 0,
+      "precision": 1.0,
+      "f1": 0.1568627450980392,
+      "avg_latency_ms": 5.111388703610035,
+      "n_samples": 188
+    },
+    "5": {
+      "tp": 25,
+      "fp": 0,
+      "tn": 0,
+      "fn": 189,
+      "recall": 0.11682242990654206,
+      "fpr": 0,
+      "precision": 1.0,
+      "f1": 0.20920502092050208,
+      "avg_latency_ms": 4.738134758494724,
+      "n_samples": 214
+    },
+    "10": {
+      "tp": 0,
+      "fp": 0,
+      "tn": 0,
+      "fn": 66,
+      "recall": 0.0,
+      "fpr": 0,
+      "precision": 0,
+      "f1": 0,
+      "avg_latency_ms": 8.655313289526736,
+      "n_samples": 66
+    },
+    "0": {
+      "tp": 0,
+      "fp": 0,
+      "tn": 1000,
+      "fn": 0,
+      "recall": 0,
+      "fpr": 0.0,
+      "precision": 0,
+      "f1": 0,
+      "avg_latency_ms": 1.9138572216033936,
+      "n_samples": 1000
+    },
+    "4": {
+      "tp": 18,
+      "fp": 0,
+      "tn": 0,
+      "fn": 122,
+      "recall": 0.12857142857142856,
+      "fpr": 0,
+      "precision": 1.0,
+      "f1": 0.22784810126582278,
+      "avg_latency_ms": 2.9382961136954173,
+      "n_samples": 140
+    },
+    "1": {
+      "tp": 14,
+      "fp": 0,
+      "tn": 0,
+      "fn": 177,
+      "recall": 0.07329842931937172,
+      "fpr": 0,
+      "precision": 1.0,
+      "f1": 0.13658536585365852,
+      "avg_latency_ms": 4.050467026795392,
+      "n_samples": 191
+    },
+    "2": {
+      "tp": 13,
+      "fp": 0,
+      "tn": 0,
+      "fn": 123,
+      "recall": 0.09558823529411764,
+      "fpr": 0,
+      "precision": 1.0,
+      "f1": 0.17449664429530198,
+      "avg_latency_ms": 2.7340948581695557,
+      "n_samples": 136
+    },
+    "7": {
+      "tp": 1,
+      "fp": 0,
+      "tn": 0,
+      "fn": 64,
+      "recall": 0.015384615384615385,
+      "fpr": 0,
+      "precision": 1.0,
+      "f1": 0.030303030303030307,
+      "avg_latency_ms": 8.233400491567759,
+      "n_samples": 65
+    }
+  }
+}

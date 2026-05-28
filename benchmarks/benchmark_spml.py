@@ -19,7 +19,19 @@ os.environ.setdefault("HF_HUB_OFFLINE", "1")
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
 with open(DATASET_PATH) as f:
-    samples = json.load(f)
+    all_samples = json.load(f)
+
+_cap = int(os.environ.get("SPML_LIMIT", "0"))
+if _cap > 0:
+    import random, math
+    inj  = [s for s in all_samples if s["label"] == 1]
+    ben  = [s for s in all_samples if s["label"] == 0]
+    half = _cap // 2
+    random.seed(42)
+    samples = random.sample(inj, min(half, len(inj))) + random.sample(ben, min(half, len(ben)))
+    random.shuffle(samples)
+else:
+    samples = all_samples
 
 injection_count = sum(1 for s in samples if s["label"] == 1)
 benign_count = len(samples) - injection_count
@@ -126,14 +138,19 @@ def classify_always25(text):
 def classify_onnx(text):
     return onnx_classify_text(text) in ("DANGEROUS", "UNCERTAIN")
 
+def classify_union(text):
+    return classify_l15(text) or classify_onnx(text)
 
+
+_run_always25 = os.environ.get("SPML_ALWAYS25", "").lower() == "true"
 benchmark_rows = [
     ("ASF L1.5 only",         run_config(samples, classify_l15,   label="ASF L1.5 only")),
     ("ASF Stage 1+2",         run_config(samples, classify_s12,   label="ASF Stage 1+2")),
     ("ASF Stage 1+2+2.5",     run_config(samples, classify_s125,  label="ASF Stage 1+2+2.5")),
-    ("ASF Always-Stage25",    run_config(samples, classify_always25, label="ASF Always-Stage25")),
+    *([("ASF Always-Stage25", run_config(samples, classify_always25, label="ASF Always-Stage25"))] if _run_always25 else []),
     ("ASF Full pipeline",     run_config(samples, classify_full,  label="ASF Full pipeline")),
     ("ONNX Prompt Guard 86M", run_config(samples, classify_onnx,  label="ONNX Prompt Guard 86M")),
+    ("ASF L1.5 + ONNX (union)", run_config(samples, classify_union, label="ASF L1.5 + ONNX (union)")),
 ]
 
 print()
@@ -164,7 +181,7 @@ results = {
                  "avg_latency_ms": round(m["avg_latency_ms"], 1), "n_samples": m["n_samples"],
                  "tp": m["tp"], "fp": m["fp"], "tn": m["tn"], "fn": m["fn"]}
                 for n, m in benchmark_rows],
-    "by_degree": {str(d): finalize_counts(c)
+    "by_degree": {str(d): c
                   for d, c in benchmark_rows[0][1]["by_degree"].items()},
 }
 with open(RESULTS_PATH, "w") as f:
