@@ -34,6 +34,7 @@ def run_config(samples, classify_fn, label=""):
     start = datetime.now()
     print(f"\n[{start.strftime('%H:%M:%S')}] Starting: {label} ({len(samples)} samples)")
     for s in tqdm(samples, desc=label, unit="sample", dynamic_ncols=True, file=sys.stdout):
+        registry.reinstate_agent("benchmark-agent")
         t0 = time.time()
         blocked = classify_fn(s["text"])
         latencies.append((time.time() - t0) * 1000)
@@ -123,7 +124,7 @@ def classify_union(text):
 
 
 configs = [
-    ("Sigil heuristic-only (peer baseline)", 0.213, 0.0, 1.0, 0.351, None, 546),
+    ("Sigil heuristic-only (peer baseline)", 0.213, 0.0, 1.0, 0.351, None, len(samples)),
     ("ASF L1.5 only",      *run_config(samples, classify_l15,      label="ASF L1.5 only")),
     ("ASF Stage 1+2",      *run_config(samples, classify_s12,      label="ASF Stage 1+2")),
     ("ASF Stage 1+2+2.5",  *run_config(samples, classify_s125,     label="ASF Stage 1+2+2.5")),

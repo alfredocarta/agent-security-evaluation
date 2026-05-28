@@ -6,7 +6,7 @@
     "precision": 1.0,
     "f1": 0.351,
     "avg_latency_ms": null,
-    "n_samples": 546
+    "n_samples": 662
   },
   {
     "configuration": "ASF L1.5 only",
@@ -14,43 +14,43 @@
     "fpr": 0.005,
     "precision": 0.8182,
     "f1": 0.0657,
-    "avg_latency_ms": 2.2,
+    "avg_latency_ms": 2.1,
     "n_samples": 662
   },
   {
     "configuration": "ASF Stage 1+2",
-    "recall": 0.0342,
+    "recall": 0.057,
     "fpr": 0.005,
-    "precision": 0.8182,
-    "f1": 0.0657,
-    "avg_latency_ms": 3.0,
+    "precision": 0.8824,
+    "f1": 0.1071,
+    "avg_latency_ms": 2.7,
     "n_samples": 662
   },
   {
     "configuration": "ASF Stage 1+2+2.5",
-    "recall": 0.0342,
+    "recall": 0.057,
     "fpr": 0.005,
-    "precision": 0.8182,
-    "f1": 0.0657,
-    "avg_latency_ms": 2.9,
+    "precision": 0.8824,
+    "f1": 0.1071,
+    "avg_latency_ms": 4.7,
     "n_samples": 662
   },
   {
     "configuration": "ASF Always-Stage25",
-    "recall": 1.0,
-    "fpr": 0.99,
-    "precision": 0.3997,
-    "f1": 0.5711,
-    "avg_latency_ms": 5.4,
+    "recall": 0.9924,
+    "fpr": 0.0175,
+    "precision": 0.9739,
+    "f1": 0.9831,
+    "avg_latency_ms": 65.8,
     "n_samples": 662
   },
   {
     "configuration": "ASF Full pipeline",
-    "recall": 1.0,
-    "fpr": 1.0,
-    "precision": 0.3973,
-    "f1": 0.5686,
-    "avg_latency_ms": 2.8,
+    "recall": 0.057,
+    "fpr": 0.005,
+    "precision": 0.8824,
+    "f1": 0.1071,
+    "avg_latency_ms": 3.0,
     "n_samples": 662
   },
   {
@@ -59,7 +59,7 @@
     "fpr": 0.0025,
     "precision": 0.9836,
     "f1": 0.3704,
-    "avg_latency_ms": 24.6,
+    "avg_latency_ms": 24.2,
     "n_samples": 662
   },
   {
@@ -68,7 +68,7 @@
     "fpr": 0.0075,
     "precision": 0.9531,
     "f1": 0.3731,
-    "avg_latency_ms": 26.2,
+    "avg_latency_ms": 25.4,
     "n_samples": 662
   }
 ]

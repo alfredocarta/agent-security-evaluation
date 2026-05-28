@@ -1,0 +1,54 @@
+[
+  {
+    "configuration": "Stage 1+2+2.5 (dampener=ON  probe=ON)",
+    "recall": 0.057,
+    "fpr": 0.005,
+    "precision": 0.8824,
+    "f1": 0.1071,
+    "avg_latency_ms": 5.4,
+    "n_samples": 662,
+    "tp": 15,
+    "fp": 2,
+    "tn": 397,
+    "fn": 248
+  },
+  {
+    "configuration": "Stage 1+2+2.5 (dampener=OFF probe=ON)",
+    "recall": 0.057,
+    "fpr": 0.005,
+    "precision": 0.8824,
+    "f1": 0.1071,
+    "avg_latency_ms": 4.1,
+    "n_samples": 662,
+    "tp": 15,
+    "fp": 2,
+    "tn": 397,
+    "fn": 248
+  },
+  {
+    "configuration": "Stage 1+2+2.5 (dampener=ON  probe=OFF)",
+    "recall": 0.0342,
+    "fpr": 0.005,
+    "precision": 0.8182,
+    "f1": 0.0657,
+    "avg_latency_ms": 2.8,
+    "n_samples": 662,
+    "tp": 9,
+    "fp": 2,
+    "tn": 397,
+    "fn": 254
+  },
+  {
+    "configuration": "Stage 1+2+2.5 (dampener=OFF probe=OFF)",
+    "recall": 0.0342,
+    "fpr": 0.005,
+    "precision": 0.8182,
+    "f1": 0.0657,
+    "avg_latency_ms": 2.8,
+    "n_samples": 662,
+    "tp": 9,
+    "fp": 2,
+    "tn": 397,
+    "fn": 254
+  }
+]
