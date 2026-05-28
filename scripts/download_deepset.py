@@ -2,8 +2,13 @@ from datasets import load_dataset
 import json
 
 
-ds = load_dataset("deepset/prompt-injections", split="train")
+from datasets import concatenate_datasets
+
+train = load_dataset("deepset/prompt-injections", split="train")
+test  = load_dataset("deepset/prompt-injections", split="test")
+ds = concatenate_datasets([train, test])
 print(f"Dataset columns: {list(ds.column_names)}")
+print(f"Splits: train={len(train)}, test={len(test)}, total={len(ds)}")
 
 samples = []
 for row in ds:

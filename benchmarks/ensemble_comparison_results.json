@@ -1,0 +1,136 @@
+{
+  "deepset": [
+    {
+      "configuration": "Sigil heuristic v2",
+      "recall": 0.213,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.3512,
+      "avg_latency_ms": null,
+      "n_samples": 662,
+      "tp": 56.019,
+      "fp": 0.0,
+      "tn": 399.0,
+      "fn": 206.981
+    },
+    {
+      "configuration": "ASF full pipeline",
+      "recall": 0.0342,
+      "fpr": 0.005,
+      "precision": 0.8182,
+      "f1": 0.0657,
+      "avg_latency_ms": 3.1,
+      "n_samples": 662,
+      "tp": 9,
+      "fp": 2,
+      "tn": 397,
+      "fn": 254
+    },
+    {
+      "configuration": "ASF L1.5 + ONNX union",
+      "recall": 0.2319,
+      "fpr": 0.0075,
+      "precision": 0.9531,
+      "f1": 0.3731,
+      "avg_latency_ms": 26.7,
+      "n_samples": 662,
+      "tp": 61,
+      "fp": 3,
+      "tn": 396,
+      "fn": 202
+    },
+    {
+      "configuration": "ONNX Prompt Guard 86M",
+      "recall": 0.2281,
+      "fpr": 0.0025,
+      "precision": 0.9836,
+      "f1": 0.3704,
+      "avg_latency_ms": 29.3,
+      "n_samples": 662,
+      "tp": 60,
+      "fp": 1,
+      "tn": 398,
+      "fn": 203
+    },
+    {
+      "configuration": "ASF L1.5 only",
+      "recall": 0.0342,
+      "fpr": 0.005,
+      "precision": 0.8182,
+      "f1": 0.0657,
+      "avg_latency_ms": 2.3,
+      "n_samples": 662,
+      "tp": 9,
+      "fp": 2,
+      "tn": 397,
+      "fn": 254
+    }
+  ],
+  "opi": [
+    {
+      "configuration": "Sigil heuristic v2",
+      "recall": 0.535,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.6971,
+      "avg_latency_ms": null,
+      "n_samples": 5000,
+      "tp": 1337.5,
+      "fp": 0.0,
+      "tn": 2500.0,
+      "fn": 1162.5
+    },
+    {
+      "configuration": "ASF full pipeline",
+      "recall": 0.48,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.6486,
+      "avg_latency_ms": 3.2,
+      "n_samples": 5000,
+      "tp": 1200,
+      "fp": 0,
+      "tn": 2500,
+      "fn": 1300
+    },
+    {
+      "configuration": "ASF L1.5 + ONNX union",
+      "recall": 0.4828,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.6512,
+      "avg_latency_ms": 30.6,
+      "n_samples": 5000,
+      "tp": 1207,
+      "fp": 0,
+      "tn": 2500,
+      "fn": 1293
+    },
+    {
+      "configuration": "ONNX Prompt Guard 86M",
+      "recall": 0.4828,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.6512,
+      "avg_latency_ms": 43.8,
+      "n_samples": 5000,
+      "tp": 1207,
+      "fp": 0,
+      "tn": 2500,
+      "fn": 1293
+    },
+    {
+      "configuration": "ASF L1.5 only",
+      "recall": 0.48,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.6486,
+      "avg_latency_ms": 2.2,
+      "n_samples": 5000,
+      "tp": 1200,
+      "fp": 0,
+      "tn": 2500,
+      "fn": 1300
+    }
+  ]
+}

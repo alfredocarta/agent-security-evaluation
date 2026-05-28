@@ -10,65 +10,65 @@
   },
   {
     "configuration": "ASF L1.5 only",
-    "recall": 0.0443,
-    "fpr": 0.0058,
+    "recall": 0.0342,
+    "fpr": 0.005,
     "precision": 0.8182,
-    "f1": 0.0841,
+    "f1": 0.0657,
     "avg_latency_ms": 2.2,
-    "n_samples": 546
+    "n_samples": 662
   },
   {
     "configuration": "ASF Stage 1+2",
-    "recall": 0.0443,
-    "fpr": 0.0058,
+    "recall": 0.0342,
+    "fpr": 0.005,
     "precision": 0.8182,
-    "f1": 0.0841,
-    "avg_latency_ms": 2.4,
-    "n_samples": 546
+    "f1": 0.0657,
+    "avg_latency_ms": 3.0,
+    "n_samples": 662
   },
   {
     "configuration": "ASF Stage 1+2+2.5",
-    "recall": 0.0443,
-    "fpr": 0.0058,
+    "recall": 0.0342,
+    "fpr": 0.005,
     "precision": 0.8182,
-    "f1": 0.0841,
-    "avg_latency_ms": 2.4,
-    "n_samples": 546
+    "f1": 0.0657,
+    "avg_latency_ms": 2.9,
+    "n_samples": 662
   },
   {
     "configuration": "ASF Always-Stage25",
     "recall": 1.0,
-    "fpr": 0.9883,
-    "precision": 0.3745,
-    "f1": 0.545,
-    "avg_latency_ms": 5.3,
-    "n_samples": 546
+    "fpr": 0.99,
+    "precision": 0.3997,
+    "f1": 0.5711,
+    "avg_latency_ms": 5.4,
+    "n_samples": 662
   },
   {
     "configuration": "ASF Full pipeline",
     "recall": 1.0,
     "fpr": 1.0,
-    "precision": 0.3718,
-    "f1": 0.5421,
-    "avg_latency_ms": 2.3,
-    "n_samples": 546
+    "precision": 0.3973,
+    "f1": 0.5686,
+    "avg_latency_ms": 2.8,
+    "n_samples": 662
   },
   {
     "configuration": "ONNX Prompt Guard 86M",
-    "recall": 0.2463,
-    "fpr": 0.0029,
-    "precision": 0.9804,
-    "f1": 0.3937,
-    "avg_latency_ms": 23.8,
-    "n_samples": 546
+    "recall": 0.2281,
+    "fpr": 0.0025,
+    "precision": 0.9836,
+    "f1": 0.3704,
+    "avg_latency_ms": 24.6,
+    "n_samples": 662
   },
   {
     "configuration": "ASF L1.5 + ONNX (union)",
-    "recall": 0.2512,
-    "fpr": 0.0087,
-    "precision": 0.9444,
-    "f1": 0.3969,
-    "avg_latency_ms": 23.9,
-    "n_samples": 546
+    "recall": 0.2319,
+    "fpr": 0.0075,
+    "precision": 0.9531,
+    "f1": 0.3731,
+    "avg_latency_ms": 26.2,
+    "n_samples": 662
   }
 ]
