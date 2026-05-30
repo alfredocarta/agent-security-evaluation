@@ -123,7 +123,25 @@ def run_config(samples, classify_fn, max_samples=None, group_fn=None, label=""):
     counts = empty_counts()
     grouped = defaultdict(empty_counts)
     start = datetime.now()
-    print(f"\n[{start.strftime('%H:%M:%S')}] Starting: {label} ({len(samples)} samples)")
+    eta_lookup = {
+        "ASF L1.5 only": 0.003,
+        "ASF Stage 1+2": 0.007,
+        "ASF Stage 1+2+2.5": 0.008,
+        "ASF Always-Stage25": 0.08,
+        "ASF Full pipeline": 0.007,
+        "ONNX Prompt Guard 86M": 0.025,
+        "ASF L1.5 + ONNX (union)": 0.025,
+    }
+    eta_seconds = len(samples) * eta_lookup.get(label, 0.01)
+    if eta_seconds < 60:
+        eta = f"ETA ~{eta_seconds:.0f}s"
+    elif eta_seconds < 3600:
+        eta = f"ETA ~{eta_seconds / 60:.0f} min"
+    else:
+        hours = int(eta_seconds // 3600)
+        minutes = int((eta_seconds % 3600) // 60)
+        eta = f"ETA ~{hours}h {minutes}min"
+    print(f"\n[{start.strftime('%H:%M:%S')}] Starting: {label} ({len(samples)} samples, {eta})")
     for sample in tqdm(samples, desc=label, unit="sample", dynamic_ncols=True, file=sys.stdout):
         text = sample_text(sample)
         t0 = time.time()
@@ -347,6 +365,35 @@ baseline_rows = [
         },
     ),
 ]
+
+eta_lookup = {
+    "ASF L1.5 only": 0.003,
+    "ASF Stage 1+2": 0.007,
+    "ASF Stage 1+2+2.5": 0.008,
+    "ASF Always-Stage25": 0.08,
+    "ASF Full pipeline": 0.007,
+    "ONNX Prompt Guard 86M": 0.025,
+    "ASF L1.5 + ONNX (union)": 0.025,
+}
+eta_total_seconds = sum(
+    len(eval_samples) * eta_lookup.get(label, 0.01)
+    for label in (
+        "ASF L1.5 only",
+        "ASF Stage 1+2",
+        "ASF Stage 1+2+2.5",
+        "ASF Always-Stage25",
+        "ASF Full pipeline",
+        "ONNX Prompt Guard 86M",
+        "ASF L1.5 + ONNX (union)",
+    )
+)
+if eta_total_seconds < 3600:
+    eta_total = f"~{eta_total_seconds / 60:.0f} min"
+else:
+    eta_hours = int(eta_total_seconds // 3600)
+    eta_minutes = int((eta_total_seconds % 3600) // 60)
+    eta_total = f"~{eta_hours}h {eta_minutes}min"
+print(f"=== OPI Full Run — estimated total time: {eta_total} ===")
 
 benchmark_rows = [
     ("ASF L1.5 only", run_config(eval_samples, classify_l15, group_fn=intent_value, label="ASF L1.5 only")),
