@@ -4,11 +4,11 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import init_db
-from .routers import agents, compliance, events, hitl, metrics, sessions
+from .routers import agents, compliance, events, hitl, metrics, report, sessions
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,8 +29,10 @@ app.include_router(hitl.router)
 app.include_router(sessions.router)
 app.include_router(metrics.router)
 app.include_router(compliance.router)
+app.include_router(report.router)
 
 app.mount("/assets", StaticFiles(directory=FRONTEND_DIR), name="assets")
+app.mount("/sections", StaticFiles(directory=FRONTEND_DIR / "sections"), name="sections")
 
 
 @app.on_event("startup")
@@ -40,7 +42,38 @@ async def startup() -> None:
 
 @app.get("/")
 async def index():
-    return FileResponse(FRONTEND_DIR / "index.html")
+    return RedirectResponse(url="/overview", status_code=307)
+
+
+def _page(name: str) -> FileResponse:
+    return FileResponse(
+        FRONTEND_DIR / f"{name}.html",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@app.get("/overview")
+async def overview_page():
+    return _page("overview")
+
+
+@app.get("/compliance")
+async def compliance_page():
+    return _page("compliance")
+
+
+@app.get("/hitl")
+async def hitl_page():
+    return _page("hitl")
+
+
+@app.get("/sessions")
+async def sessions_page():
+    return _page("sessions")
 
 
 @app.get("/health")

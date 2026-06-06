@@ -11,13 +11,18 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
 @router.get("", response_model=list[SessionSummary])
 async def recent_sessions(
-    limit: int = Query(default=50, ge=1, le=500),
+    limit: int = Query(default=20, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     agent_id: str | None = Query(default=None),
     show_eval: bool = Query(default=False),
 ):
-    return await get_sessions(limit=limit, agent_id=agent_id, show_eval=show_eval)
+    return await get_sessions(limit=limit, offset=offset, agent_id=agent_id, show_eval=show_eval)
 
 
 @router.get("/{session_id}", response_model=list[AuditEvent])
-async def session_events(session_id: str):
-    return await get_session_events(session_id)
+async def session_events(
+    session_id: str,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    return await get_session_events(session_id, limit=limit, offset=offset)

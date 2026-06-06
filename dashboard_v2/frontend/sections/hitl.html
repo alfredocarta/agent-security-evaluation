@@ -1,0 +1,63 @@
+<section id="hitl">
+<div class="card" style="padding:20px;">
+<div class="section-hdr">
+<div style="display:flex;align-items:center;gap:10px;">
+<span class="section-title">Human Oversight Queue</span>
+<span class="badge badge-neutral" style="font-size:10px;">Art. 14</span>
+</div>
+<div v-if="hitlEvents.length > 0" class="hitl-alert">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+<line x1="12" y1="9" x2="12" y2="13"/>
+<line x1="12" y1="17" x2="12.01" y2="17"/>
+</svg>
+{{ hitlEvents.length }} pending review
+</div>
+<div v-else class="hitl-alert-ok">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<polyline points="20 6 9 17 4 12"/>
+</svg>
+HITL active · No escalations
+</div>
+</div>
+<div v-if="hitlEvents.length > 0">
+<table class="data-table">
+<thead>
+<tr>
+<th>Time</th>
+<th>Agent</th>
+<th>Tool</th>
+<th>Reason</th>
+<th>Stage</th>
+<th>Status</th>
+<th class="r">Action</th>
+</tr>
+</thead>
+<tbody>
+<tr v-for="ev in hitlEvents" :key="ev.event_id" style="cursor:default;">
+<td class="td-mono">{{ timeOnly(ev.timestamp) }}</td>
+<td style="font-weight:500;">{{ ev.agent_id }}</td>
+<td class="c-accent">{{ ev.tool_name || ev.action }}</td>
+<td style="font-size:12px;color:var(--text-muted);max-width:220px;">{{ truncate(ev.reason, 55) }}</td>
+<td><span :class="stageBadgeClass(ev.stage)">{{ ev.stage }}</span></td>
+<td>
+<span style="display:inline-flex;align-items:center;gap:5px;color:var(--warning);font-size:12px;font-weight:500;">
+<span class="pulse-dot"></span>
+Pending review
+</span>
+</td>
+<td class="r">
+<div class="hitl-actions">
+<button class="hitl-btn hitl-btn-approve" :disabled="hitlDeciding[ev.event_id]" @click="openHitlModal(ev, 'approve')">Allow</button>
+<button class="hitl-btn hitl-btn-reject" :disabled="hitlDeciding[ev.event_id]" @click="openHitlModal(ev, 'reject')">Block</button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+<p style="font-size:11px;color:var(--text-muted);margin-top:12px;">
+Decisions are written to the append-only audit trail and remove the item from this queue.
+</p>
+</div>
+</div>
+</section>

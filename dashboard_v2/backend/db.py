@@ -11,7 +11,20 @@ from typing import Any
 
 import aiosqlite
 
-from .models import AuditEvent, EventExplanation, KPIMetrics, PipelineStage, SessionSummary
+from .models import (
+    AuditEvent,
+    EventExplanation,
+    KPIMetrics,
+    PipelineStage,
+    SessionSummary,
+    StageBucket,
+    ReasonBucket,
+    LatencyBucket,
+    LatencyDistribution,
+    TimelinePoint,
+    AgentPosture,
+    OverviewCharts,
+)
 
 
 ASF_ROOT = Path(os.environ.get("ASF_ROOT", "/Users/alfredo/Projects/agent-security-framework"))
@@ -1258,6 +1271,37 @@ def _get_hermes_metric_counts(db_path: Path, agent_id: str | None = None) -> dic
     }
 
 
+_GOV_RBAC_REASON_LIKE = ("%suspended or not found%", "%not in permissions%")
+
+
+def _governance_rbac_counts(db_path: Path, agent_id: str | None) -> dict[str, int]:
+    """Access-control denials (agent suspended / RBAC permission) blocked at the gate
+    before content inspection. Excluded from KPI block/total figures so the headline
+    reflects content-pipeline decisions, not access-control rejections; they remain
+    visible in the stage funnel's Governance / RBAC bucket."""
+    cache_key = ("gov_rbac_counts", agent_id)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+    result = {"total": 0, "last_24h": 0}
+    if _has_audit_schema(db_path):
+        agent_clause = " AND agent_id = ?" if agent_id else ""
+        agent_params: list[Any] = [agent_id] if agent_id else []
+        like = "(" + " OR ".join("reason LIKE ?" for _ in _GOV_RBAC_REASON_LIKE) + ")"
+        cutoff_24h = (datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+        with sqlite3.connect(db_path) as conn:
+            result["total"] = conn.execute(
+                f"SELECT COUNT(*) FROM audit_trail WHERE outcome = 'BLOCKED' AND {like}{agent_clause}",
+                list(_GOV_RBAC_REASON_LIKE) + agent_params,
+            ).fetchone()[0]
+            result["last_24h"] = conn.execute(
+                f"SELECT COUNT(*) FROM audit_trail WHERE outcome = 'BLOCKED' AND {like} "
+                f"AND timestamp >= ?{agent_clause}",
+                list(_GOV_RBAC_REASON_LIKE) + [cutoff_24h] + agent_params,
+            ).fetchone()[0]
+    return _cache_set(cache_key, result, ttl=30.0)
+
+
 async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
     db_path = get_db_path()
     db_source = str(db_path).rsplit("/", 1)[-1] or str(db_path)
@@ -1277,8 +1321,12 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
         # the latency source (audit_trail has no latency column), and must not be summed
         # in here or the same Hermes call is counted twice.
         counts = cache.get("outcome_counts", {})
-        total_tool_calls = int(counts.get("INTERCEPTOR_START", 0))
-        blocked = sum(int(counts.get(outcome, 0)) for outcome in BLOCK_OUTCOMES)
+        # Exclude access-control denials (agent suspended / RBAC) from the KPI figures:
+        # they are gate rejections, not content-inspection decisions (still shown in the
+        # stage funnel's Governance / RBAC bucket).
+        gov = _governance_rbac_counts(db_path, None)
+        total_tool_calls = max(0, int(counts.get("INTERCEPTOR_START", 0)) - gov["total"])
+        blocked = max(0, sum(int(counts.get(outcome, 0)) for outcome in BLOCK_OUTCOMES) - gov["total"])
         allowed = sum(int(counts.get(outcome, 0)) for outcome in ALLOW_OUTCOMES)
         hitl = sum(int(counts.get(outcome, 0)) for outcome in HITL_OUTCOMES)
         terminal = blocked + allowed + hitl
@@ -1298,6 +1346,7 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
                     "WHERE outcome = 'INTERCEPTOR_START' AND timestamp >= ?",
                     (cutoff_24h,),
                 ).fetchone()[0]
+        tool_calls_last_24h = max(0, tool_calls_last_24h - gov["last_24h"])
 
         min_ts = _parse_timestamp(cache.get("min_interceptor_ts"))
         avg_daily_calls = 0.0
@@ -1365,10 +1414,15 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
             f"SELECT MAX(timestamp) FROM audit_trail WHERE 1=1{agent_clause}",
             agent_params,
         ).fetchone()[0]
-    blocked = sum(counts.get(outcome, 0) for outcome in BLOCK_OUTCOMES)
+    # Exclude access-control denials (agent suspended / RBAC) from the KPI figures: they
+    # are gate rejections, not content-inspection decisions (still in the funnel bucket).
+    gov = _governance_rbac_counts(db_path, agent_id)
+    blocked = max(0, sum(counts.get(outcome, 0) for outcome in BLOCK_OUTCOMES) - gov["total"])
     allowed = sum(counts.get(outcome, 0) for outcome in ALLOW_OUTCOMES)
     hitl = sum(counts.get(outcome, 0) for outcome in HITL_OUTCOMES)
     terminal = blocked + allowed + hitl
+    total_tool_calls = max(0, total_tool_calls - gov["total"])
+    audit_calls_last_24h = max(0, audit_calls_last_24h - gov["last_24h"])
     return KPIMetrics(
         total_tool_calls=total_tool_calls,
         detection_rate=(blocked / terminal) if terminal else 0.0,
@@ -1383,6 +1437,178 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
         data_as_of=str(latest_ts) if latest_ts else hermes.get("max_ts"),
         db_source=db_source,
     )
+
+
+_CHART_WINDOWS = {"24h": timedelta(hours=24), "7d": timedelta(days=7)}
+
+_LATENCY_EDGES = [
+    (0, 10, "<10ms"),
+    (10, 25, "10-25ms"),
+    (25, 50, "25-50ms"),
+    (50, 100, "50-100ms"),
+    (100, 300, "100-300ms"),
+    (300, None, "300ms+"),
+]
+
+
+def _latency_distribution(db_path: Path, cutoff: str, agent_id: str | None) -> LatencyDistribution:
+    """Latency comes only from hermes_tool_traces; audit_trail has no latency column.
+    This is the sole source, not double-counting. ISO 'T' timestamps in that table need
+    datetime() normalization (unlike audit_trail's space-separated, index-friendly form)."""
+    buckets = [LatencyBucket(label=label, count=0) for _lo, _hi, label in _LATENCY_EDGES]
+    if not _has_hermes_trace_schema(db_path):
+        return LatencyDistribution(buckets=buckets, p50_ms=0.0, p95_ms=0.0, p99_ms=0.0, sample_count=0)
+    agent_clause = " AND agent_id = ?" if agent_id else ""
+    params: list[Any] = [cutoff] + ([agent_id] if agent_id else [])
+    with sqlite3.connect(db_path, timeout=2) as conn:
+        values = [int(row[0] or 0) for row in conn.execute(
+            "SELECT COALESCE(asf_latency_ms, 0) FROM hermes_tool_traces "
+            f"WHERE datetime(timestamp) >= datetime(?){agent_clause} "
+            "ORDER BY COALESCE(asf_latency_ms, 0)",
+            params,
+        ).fetchall()]
+    for value in values:
+        for index, (lo, hi, _label) in enumerate(_LATENCY_EDGES):
+            if value >= lo and (hi is None or value < hi):
+                buckets[index].count += 1
+                break
+
+    def _pct(p: float) -> float:
+        if not values:
+            return 0.0
+        idx = min(len(values) - 1, int(round((len(values) - 1) * p)))
+        return float(values[idx])
+
+    return LatencyDistribution(
+        buckets=buckets, p50_ms=_pct(0.50), p95_ms=_pct(0.95), p99_ms=_pct(0.99),
+        sample_count=len(values),
+    )
+
+
+def _classify_block_reason(outcome: str, reason: str | None) -> str:
+    r = (reason or "").lower()
+    if "suspended or not found" in r or ("suspended" in r and "not found" in r):
+        return "governance"
+    if "not in permissions" in r:
+        return "rbac"
+    if outcome == "OUTPUT_BLOCK":
+        return "output_guard"
+    detection_markers = ("heuristic", "fast-path", "regex", "classifier", "deberta",
+                         "stage 2", "stage 3", "onnx", "prompt guard", "llm", "kill switch")
+    if outcome == "KILL_SWITCH" or any(marker in r for marker in detection_markers):
+        return "content_detection"
+    return "other"
+
+
+async def get_overview_charts(window: str = "24h", agent_id: str | None = None) -> OverviewCharts:
+    window = window if window in _CHART_WINDOWS else "24h"
+    db_path = get_db_path()
+    db_source = str(db_path).rsplit("/", 1)[-1] or str(db_path)
+    cache_key = ("overview_charts", window, agent_id)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    # audit_trail uses space-separated timestamps, so a precomputed cutoff string is
+    # index-friendly (idx_audit_trail_outcome_timestamp). Every query is windowed so it
+    # stays a bounded range scan even on the multi-million-row production DB.
+    cutoff = (datetime.utcnow() - _CHART_WINDOWS[window]).strftime("%Y-%m-%d %H:%M:%S")
+    agent_clause = " AND agent_id = ?" if agent_id else ""
+    agent_params: list[Any] = [agent_id] if agent_id else []
+
+    stage_acc: dict[str, dict[str, int]] = {}
+    reason_acc: dict[str, int] = {
+        "governance": 0, "rbac": 0, "content_detection": 0, "output_guard": 0, "other": 0,
+    }
+    timeline_acc: dict[str, dict[str, int]] = {}
+    agent_acc: dict[str, dict[str, int]] = {}
+
+    if _has_audit_schema(db_path):
+        placeholders = ",".join("?" for _ in TERMINAL_OUTCOMES)
+        terminal = sorted(TERMINAL_OUTCOMES)
+        # Governance/RBAC access-control denials are excluded from every chart dataset
+        # (funnel, block reasons, timeline, per-agent), like the KPIs: they are gate
+        # rejections, not content-inspection decisions.
+        exclude_gov = " AND NOT (outcome = 'BLOCKED' AND (" + " OR ".join(
+            "reason LIKE ?" for _ in _GOV_RBAC_REASON_LIKE) + "))"
+        gov_params = list(_GOV_RBAC_REASON_LIKE)
+        with sqlite3.connect(db_path) as conn:
+            decision_rows = conn.execute(
+                f"SELECT outcome, reason, COUNT(*) FROM audit_trail "
+                f"WHERE outcome IN ({placeholders}) AND timestamp >= ?{agent_clause}{exclude_gov} "
+                f"GROUP BY outcome, reason",
+                terminal + [cutoff] + agent_params + gov_params,
+            ).fetchall()
+            timeline_rows = conn.execute(
+                f"SELECT strftime('%Y-%m-%d %H:00', timestamp) AS bucket, outcome, COUNT(*) "
+                f"FROM audit_trail WHERE outcome IN ({placeholders}) AND timestamp >= ?{agent_clause}{exclude_gov} "
+                f"GROUP BY bucket, outcome",
+                terminal + [cutoff] + agent_params + gov_params,
+            ).fetchall()
+            agent_rows = conn.execute(
+                f"SELECT agent_id, outcome, COUNT(*) FROM audit_trail "
+                f"WHERE outcome IN ({placeholders}) AND timestamp >= ?{exclude_gov} GROUP BY agent_id, outcome",
+                terminal + [cutoff] + gov_params,
+            ).fetchall()
+
+        for outcome, reason, count in decision_rows:
+            verdict = _infer_verdict(outcome)
+            stage = _extract_stage(outcome, reason)
+            bucket = stage_acc.setdefault(stage, {"total": 0, "blocked": 0, "allowed": 0, "hitl": 0})
+            bucket["total"] += count
+            if verdict == "DENY":
+                bucket["blocked"] += count
+                reason_acc[_classify_block_reason(outcome, reason)] += count
+            elif verdict == "ALLOW":
+                bucket["allowed"] += count
+            elif verdict == "HITL":
+                bucket["hitl"] += count
+
+        for bucket_label, outcome, count in timeline_rows:
+            point = timeline_acc.setdefault(bucket_label, {"blocked": 0, "allowed": 0, "hitl": 0})
+            verdict = _infer_verdict(outcome)
+            if verdict == "DENY":
+                point["blocked"] += count
+            elif verdict == "ALLOW":
+                point["allowed"] += count
+            elif verdict == "HITL":
+                point["hitl"] += count
+
+        for agent, outcome, count in agent_rows:
+            if agent in EVAL_TOOL_AGENTS:
+                continue
+            entry = agent_acc.setdefault(agent, {"total": 0, "blocked": 0, "allowed": 0})
+            entry["total"] += count
+            verdict = _infer_verdict(outcome)
+            if verdict == "DENY":
+                entry["blocked"] += count
+            elif verdict == "ALLOW":
+                entry["allowed"] += count
+
+    latency = _latency_distribution(db_path, cutoff, agent_id)
+
+    stage_funnel = [
+        StageBucket(stage=stage, total=v["total"], blocked=v["blocked"], allowed=v["allowed"], hitl=v["hitl"])
+        for stage, v in sorted(stage_acc.items(), key=lambda kv: kv[1]["total"], reverse=True)
+    ]
+    block_reasons = [ReasonBucket(category=k, count=v) for k, v in reason_acc.items() if v > 0]
+    timeline = [
+        TimelinePoint(bucket=b, blocked=v["blocked"], allowed=v["allowed"], hitl=v["hitl"])
+        for b, v in sorted(timeline_acc.items())
+    ]
+    per_agent = [
+        AgentPosture(
+            agent_id=agent, total=v["total"], blocked=v["blocked"], allowed=v["allowed"],
+            block_rate=(v["blocked"] / v["total"]) if v["total"] else 0.0,
+        )
+        for agent, v in sorted(agent_acc.items(), key=lambda kv: kv[1]["total"], reverse=True)
+    ]
+
+    result = OverviewCharts(
+        window=window, db_source=db_source, stage_funnel=stage_funnel,
+        block_reasons=block_reasons, latency=latency, timeline=timeline, per_agent=per_agent,
+    )
+    return _cache_set(cache_key, result, ttl=10.0)
 
 
 async def get_compliance_events(article_code: str, limit: int = 20, offset: int = 0) -> list[AuditEvent]:

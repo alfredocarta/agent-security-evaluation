@@ -1,0 +1,199 @@
+<section id="sessions">
+<div class="card" style="padding:20px;">
+<div class="section-hdr">
+<div>
+<div class="section-title">Sessions Timeline</div>
+<div class="section-sub" style="margin-top:2px;">
+Events within 30s grouped as sessions · eval sessions hidden
+</div>
+</div>
+<div style="display:flex;align-items:center;gap:10px;">
+<div style="display:flex;align-items:center;gap:6px;">
+<label style="font-size:12px;color:var(--text-muted);white-space:nowrap;">Per page:</label>
+<select v-model.number="sessionsPageSize" @change="onSessionsPageSizeChange" style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:12px;color:var(--text-primary);cursor:pointer;outline:none;">
+<option :value="10">10</option>
+<option :value="20">20</option>
+<option :value="50">50</option>
+</select>
+</div>
+<div style="display:flex;align-items:center;gap:6px;">
+<label style="font-size:12px;color:var(--text-muted);white-space:nowrap;">Agent:</label>
+<select v-model="selectedAgent" @change="onAgentChange" style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:12px;color:var(--text-primary);cursor:pointer;outline:none;">
+<option value="">All agents</option>
+<option v-for="a in agents" :key="a" :value="a">{{ a }}</option>
+</select>
+</div>
+<button @click="refresh()" style="padding:5px 12px;border-radius:5px;background:transparent;border:1px solid var(--border);font-size:12px;color:var(--text-secondary);cursor:pointer;">
+Refresh
+</button>
+</div>
+</div>
+<input type="text" v-model="sessionSearch" placeholder="Search sessions…" class="search-input">
+<table class="data-table">
+<thead>
+<tr>
+<th>Session</th>
+<th>Agent</th>
+<th>Start</th>
+<th class="r">Duration</th>
+<th class="r">Calls</th>
+<th class="r">Blocked</th>
+<th class="r">Allowed</th>
+<th class="r">HITL</th>
+</tr>
+</thead>
+<tbody>
+<template v-for="session in paginatedFilteredSessions" :key="session.session_id">
+<tr @click="toggleSession(session.session_id)" @mouseenter="prefetchSession(session.session_id)">
+<td>
+<span style="display:inline-flex;align-items:center;gap:6px;">
+<span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted);">{{ truncate(session.session_id, 20) }}</span>
+<button class="copy-btn" title="Copy full session ID" @click.stop="copyId(session.session_id)">copy</button>
+</span>
+</td>
+<td style="font-weight:500;">
+<span style="display:inline-flex;align-items:center;">
+<span class="agent-dot" :style="{ background: agentDotColor(session.agent_id) }"></span>
+{{ session.agent_id }}
+</span>
+</td>
+<td class="td-mono">{{ formatTime(session.start_time) }}</td>
+<td class="r">
+<div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted);">{{ formatDuration(session.duration_ms) }}</div>
+<div class="dur-bar">
+<div class="dur-bar-fill" :style="{ width: Math.max(2, (session.duration_ms / maxSessionDuration * 100)) + '%' }"></div>
+</div>
+</td>
+<td class="r td-mono">{{ session.total_events }}</td>
+<td class="r mono" :style="session.blocked_count > 0 ? 'color:var(--danger);font-weight:600;' : 'color:var(--text-muted);'">
+{{ session.blocked_count ?? '–' }}
+</td>
+<td class="r mono" style="color:var(--success);">{{ session.allowed_count ?? '–' }}</td>
+<td class="r mono c-warning">{{ session.hitl_count ?? '–' }}</td>
+</tr>
+<tr v-if="expandedSession === session.session_id" style="background:var(--bg-secondary) !important;cursor:default;">
+<td colspan="8" style="padding:0;">
+<div class="drill-content" style="padding:14px 18px;">
+<div style="font-size:11px;font-style:italic;color:var(--text-muted);border-left:2px solid var(--border);padding-left:9px;margin-bottom:12px;line-height:1.55;">
+Showing ASF-intercepted tool calls only. Agent reasoning steps (LLM turns)
+are not captured — ASF operates at the tool call boundary.
+</div>
+<div v-if="expandedSessionInfo" style="background:var(--bg-card);border:1px solid var(--border);border-radius:5px;padding:8px 12px;margin-bottom:12px;font-size:12px;display:flex;flex-wrap:wrap;gap:7px;align-items:center;">
+<span style="font-weight:600;">{{ expandedSessionInfo.agentId }}</span>
+<span style="color:var(--text-muted);">·</span>
+<span style="color:var(--text-secondary);">{{ expandedSessionInfo.framework }}</span>
+<span style="color:var(--text-muted);">·</span>
+<span style="color:var(--text-secondary);">Agent model: <span style="color:var(--text-primary);">{{ expandedSessionInfo.model }}</span></span>
+</div>
+<div v-if="loadingSession" style="font-size:13px;color:var(--text-muted);">Loading session events…</div>
+<div v-else-if="paginatedSessionEvents.length === 0" style="font-size:13px;color:var(--text-muted);">No events found.</div>
+<div v-for="ev in paginatedSessionEvents" :key="ev.event_id" class="ev-row" :class="evRowClass(ev)">
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:7px;">
+<span class="mono" style="font-size:12px;color:var(--text-muted);">{{ timeOnly(ev.timestamp) }}</span>
+<span style="font-weight:600;font-size:13px;">{{ ev.tool_name || ev.action }}</span>
+<span :class="verdictBadgeClass(ev)">{{ ev.verdict || ev.outcome }}</span>
+<span :class="stageBadgeClass(ev.stage)">{{ ev.stage }}</span>
+<span v-if="ev.latency_ms != null" class="mono" style="font-size:12px;color:var(--text-muted);">{{ formatDuration(ev.latency_ms) }}</span>
+<button v-if="isTerminalEvent(ev)" :class="eventDetailsButtonClass(ev)" style="margin-left:auto;" @click.stop="toggleEventDetails(ev)">
+<svg class="chevron" :class="{ open: expandedEventDetails.has(ev.event_id) }" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+<polyline points="4,2 8,6 4,10"/>
+</svg>
+{{ loadingEventDetails.has(ev.event_id) ? 'Loading…' : 'Details' }}
+</button>
+</div>
+<div style="margin-top:4px;font-size:13px;">
+<span style="color:var(--text-muted);">Reason: </span>
+<span style="color:var(--text-secondary);">{{ truncate(ev.reason, 120) }}</span>
+<span v-if="ev.reason && ev.reason.length > 120"
+class="c-accent" style="cursor:pointer;font-size:12px;margin-left:4px;"
+@click.stop="expandReason(ev.event_id)">
+{{ expandedReasons.has(ev.event_id) ? 'less' : 'more' }}
+</span>
+</div>
+<div v-if="expandedReasons.has(ev.event_id)" style="color:var(--text-secondary);margin-top:3px;font-size:13px;">{{ ev.reason }}</div>
+<div v-if="hitlDecisionMetadata(ev)" style="margin-top:4px;font-size:12px;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:10px;">
+<span>Reviewer: <span style="color:var(--text-primary);font-weight:600;">{{ hitlDecisionMetadata(ev).reviewer }}</span></span>
+<span v-if="hitlDecisionMetadata(ev).note">Note: <span style="color:var(--text-secondary);">{{ hitlDecisionMetadata(ev).note }}</span></span>
+</div>
+<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--text-muted);">
+<span v-if="ev.eu_ai_act_article">EU AI Act: {{ ev.eu_ai_act_article }}{{ ev.eu_ai_act_control ? ' – ' + ev.eu_ai_act_control : '' }}</span>
+<span>ASF security model: {{ ev.security_model || 'not recorded' }}</span>
+<span v-if="ev.confidence != null">Confidence: {{ (ev.confidence * 100).toFixed(0) }}%</span>
+</div>
+<div v-if="expandedEventDetails.has(ev.event_id)" class="event-details-panel drill-content">
+<div class="event-explanation-summary" v-if="explanationForEvent(ev)">
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+<span :class="verdictBadgeClass({ verdict: explanationForEvent(ev).final_verdict, outcome: explanationForEvent(ev).final_outcome })">
+{{ explanationForEvent(ev).final_verdict || explanationForEvent(ev).final_outcome || 'DECISION' }}
+</span>
+<span class="badge badge-neutral">{{ explanationForEvent(ev).security_model || ev.security_model || 'ASF security model' }}</span>
+<span v-if="explanationForEvent(ev).latency_ms != null" class="mono" style="font-size:12px;color:var(--text-muted);">{{ formatDuration(explanationForEvent(ev).latency_ms) }}</span>
+</div>
+<div class="event-explanation-reason">
+<span style="color:var(--text-muted);">Decision reason: </span>
+<span>{{ explanationForEvent(ev).final_reason || ev.reason || 'No reason recorded.' }}</span>
+</div>
+</div>
+<div v-if="loadingEventDetails.has(ev.event_id) && !explanationForEvent(ev)" style="font-size:13px;color:var(--text-muted);">Loading explanation…</div>
+<div v-else class="pipeline-timeline">
+<div v-for="(stageEv, idx) in explanationPipeline(ev)" :key="ev.event_id + '-stage-' + idx" class="pipeline-stage" :class="stageToneClass(stageEv)">
+<div class="pipeline-node"></div>
+<div class="pipeline-card">
+<div class="pipeline-card-hdr">
+<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+<span :class="stageBadgeClass(stageEv.stage)">{{ stageEv.stage || 'Unknown stage' }}</span>
+<span :class="verdictBadgeClass(stageEv)">{{ stageEv.verdict || stageEv.outcome || '—' }}</span>
+<span v-if="stageEv.terminal" class="badge badge-neutral">final</span>
+</div>
+<div class="pipeline-score">{{ stageConfidenceLabel(stageEv) }}</div>
+</div>
+<div class="pipeline-reason">{{ stageEv.reason || 'No reason recorded for this stage.' }}</div>
+<div class="pipeline-meta">
+<span v-if="stageEv.timestamp">{{ timeOnly(stageEv.timestamp) }}</span>
+<span v-if="stageEv.latency_ms != null">{{ formatDuration(stageEv.latency_ms) }}</span>
+<span>{{ stageEv.outcome || 'no outcome' }}</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div v-if="!loadingSession" style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted);">
+<span>
+Timeline page {{ sessionPage + 1 }} / {{ expandedSessionTotalPages }}
+· showing {{ paginatedSessionEvents.length.toLocaleString() }} of {{ expandedSessionTotalEvents.toLocaleString() }} events
+· cached in browser
+</span>
+<div style="display:flex;align-items:center;gap:8px;">
+<button class="hitl-btn" :disabled="sessionPage === 0 || sessionLoadingMore" @click="prevSessionPage">
+Previous
+</button>
+<button class="hitl-btn" :disabled="sessionPage + 1 >= expandedSessionTotalPages || sessionLoadingMore"
+@click="nextSessionPage">
+{{ sessionLoadingMore ? 'Loading…' : 'Next 20' }}
+</button>
+</div>
+</div>
+</div>
+</td>
+</tr>
+</template>
+</tbody>
+</table>
+<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted);">
+<span>
+Page {{ sessionsPage + 1 }}
+· showing {{ paginatedFilteredSessions.length.toLocaleString() }} sessions
+· cached in browser
+</span>
+<div style="display:flex;align-items:center;gap:8px;">
+<button class="hitl-btn" :disabled="sessionsPage === 0 || sessionsLoading" @click="prevSessionsPage">
+Previous
+</button>
+<button class="hitl-btn" :disabled="!sessionsHasMore || sessionsLoading" @click="nextSessionsPage">
+{{ sessionsLoading ? 'Loading…' : 'Next ' + sessionsPageSize }}
+</button>
+</div>
+</div>
+</div>
+</section>

@@ -1,0 +1,73 @@
+<section id="compliance" class="grid grid-cols-1 gap-4">
+<div class="card lg:col-span-2" style="padding:20px;">
+<div class="section-hdr">
+<span class="section-title">EU AI Act - Evidence Mapping</span>
+<span class="section-sub">Click an article to see the correlated audit events</span>
+</div>
+<div class="disclaimer">
+This view maps recorded ASF audit events to EU AI Act articles as supporting evidence. It is not a conformity assessment and does not assert legal compliance. Each state reflects only what the underlying audit trail can demonstrate, and every claim links to the raw events behind it.
+</div>
+<table class="data-table">
+<thead>
+<tr>
+<th style="width:110px;">Article</th>
+<th>Control</th>
+<th class="r" style="width:90px;">Evidence</th>
+<th class="r" style="width:170px;">State</th>
+</tr>
+</thead>
+<tbody>
+<template v-for="item in compliance" :key="item.article">
+<tr class="compliance-row" @click="toggleArticle(item.article)" :style="expandedArticle === item.article ? 'background:var(--bg-hover)' : ''">
+<td>
+<span style="display:flex;align-items:center;gap:6px;">
+<svg class="chevron" :class="{ open: expandedArticle === item.article }" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<polyline points="4,2 8,6 4,10"/>
+</svg>
+<span class="article-code">{{ item.article }}</span>
+</span>
+</td>
+<td class="control-cell">
+<div class="control-title">{{ item.control }}</div>
+<div v-if="item.description" class="control-description">{{ item.description }}</div>
+</td>
+<td class="r article-count">{{ item.event_count.toLocaleString() }}</td>
+<td class="r">
+<span style="display:inline-flex;justify-content:flex-end;">
+<span class="ev-state" :class="evidenceState(item).cls">{{ evidenceState(item).label }}</span>
+</span>
+</td>
+</tr>
+<tr v-if="expandedArticle === item.article">
+<td colspan="4" style="padding:0;">
+<div class="drill-content" style="margin:2px 0 4px 14px;padding:10px 14px 10px 16px;border-left:2px solid var(--accent);background:var(--bg-stripe);">
+<div v-if="item.note" style="font-size:12px;color:var(--text-secondary);line-height:1.55;margin-bottom:10px;padding-bottom:9px;border-bottom:1px solid var(--border-subtle);">
+<span style="color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:10px;">Scope &amp; limitations</span><br>{{ item.note }}
+</div>
+<div v-if="loadingArticle" style="font-size:13px;color:var(--text-muted);">Loading events…</div>
+<div v-else-if="articleEvents.length === 0" style="font-size:13px;color:var(--text-muted);">No events found.</div>
+<div v-for="ev in articleEvents" :key="ev.event_id" class="ev-row" :class="evRowClass(ev)" style="margin-bottom:4px;">
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
+<span class="mono" style="font-size:12px;color:var(--text-muted);">{{ timeOnly(ev.timestamp) }}</span>
+<span style="font-weight:500;font-size:13px;">{{ ev.tool_name || ev.action }}</span>
+<span :class="verdictBadgeClass(ev)">{{ ev.verdict || ev.outcome }}</span>
+<span :class="stageBadgeClass(ev.stage)">{{ ev.stage }}</span>
+<span v-if="ev.latency_ms != null" class="mono" style="font-size:12px;color:var(--text-muted);">{{ formatDuration(ev.latency_ms) }}</span>
+</div>
+<div style="color:var(--text-muted);margin-top:3px;font-size:12px;">{{ truncate(ev.reason, 120) }}</div>
+</div>
+<div v-if="!loadingArticle && articleEvents.length > 0"
+style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;font-size:12px;color:var(--text-muted);">
+<span>Showing {{ articleEvents.length.toLocaleString() }} events · cached in browser</span>
+<button v-if="articleHasMore[expandedArticle]" class="hitl-btn" :disabled="articleLoadingMore" @click="loadMoreArticleEvents">
+{{ articleLoadingMore ? 'Loading…' : 'Load next 20' }}
+</button>
+</div>
+</div>
+</td>
+</tr>
+</template>
+</tbody>
+</table>
+</div>
+</section>

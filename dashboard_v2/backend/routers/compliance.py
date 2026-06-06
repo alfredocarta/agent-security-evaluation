@@ -7,7 +7,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ..db import EVAL_TOOL_AGENTS, get_compliance_events, get_recent_events, get_total_trace_count
+from ..db import EVAL_TOOL_AGENTS, get_compliance_events, get_recent_events, get_total_trace_count, _load_dashboard_cache
 from ..models import AuditEvent, ComplianceItem
 
 
@@ -98,12 +98,15 @@ def _suite_results_exist() -> bool:
 async def compliance():
     events = await get_recent_events(limit=10000)
     total_trace_count = await get_total_trace_count()
+    cache_counts = _load_dashboard_cache().get("outcome_counts", {})
     items = []
     for article, control, outcomes, description, note in ARTICLE_DEFINITIONS:
         if outcomes is None:
             count = total_trace_count
         elif outcomes == "benchmark":
             count = sum(1 for event in events if event.agent_id in EVAL_TOOL_AGENTS)
+        elif cache_counts:
+            count = sum(int(cache_counts.get(outcome, 0)) for outcome in outcomes)
         else:
             count = sum(1 for event in events if event.outcome in outcomes)
 
@@ -149,7 +152,11 @@ async def agt_compliance(limit: int = Query(default=1000, ge=1, le=1000)):
 
 
 @router.get("/{article_code}", response_model=list[AuditEvent])
-async def compliance_events(article_code: str):
+async def compliance_events(
+    article_code: str,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
     if article_code not in ALL_ARTICLES:
         raise HTTPException(status_code=404, detail=f"Unknown article: {article_code}")
-    return await get_compliance_events(article_code, limit=20)
+    return await get_compliance_events(article_code, limit=limit, offset=offset)

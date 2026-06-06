@@ -309,6 +309,121 @@ def test_cache_branch_last_24h_is_windowed_not_lifetime_total(tmp_path, monkeypa
     assert metrics.tool_calls_last_24h == 3
 
 
+def _create_charts_db(path):
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE audit_trail ("
+        "hash TEXT PRIMARY KEY, timestamp TEXT, agent_id TEXT, action TEXT, "
+        "outcome TEXT, reason TEXT, prev_hash TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE hermes_tool_traces ("
+        "id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hermes', "
+        "agent_id TEXT NOT NULL, agent_type TEXT, agent_model TEXT, session_id TEXT, task_id TEXT, "
+        "tool_call_id TEXT, hermes_tool_name TEXT NOT NULL, asf_tool_name TEXT NOT NULL, "
+        "args_hash TEXT NOT NULL, args_preview TEXT, output_hash TEXT, output_preview TEXT, "
+        "verdict TEXT, outcome TEXT, reason TEXT, stage TEXT, confidence REAL, "
+        "asf_latency_ms INTEGER, tool_duration_ms INTEGER, side_effect_verified INTEGER DEFAULT 0, "
+        "side_effect_occurred INTEGER, expected_label TEXT, human_label TEXT, scenario_id TEXT, "
+        "threat_id TEXT, trace_id TEXT, audit_hash TEXT, created_at TEXT NOT NULL)"
+    )
+    now = datetime.utcnow()
+    rows = [
+        ("HEURISTIC_CLEAR", "Cleared by heuristic fast-path (score=0.00)"),
+        ("HEURISTIC_CLEAR", "Cleared by heuristic fast-path (score=0.01)"),
+        ("BLOCKED", "Agent suspended or not found"),
+        ("BLOCKED", "Tool 'vision_analyze' not in permissions: ['browser']"),
+        ("KILL_SWITCH", "KILL SWITCH ACTIVATED (Stage 2.5 DeBERTa)"),
+    ]
+    for i, (outcome, reason) in enumerate(rows):
+        ts = (now - timedelta(minutes=i + 1)).strftime("%Y-%m-%d %H:%M:%S.%f")
+        conn.execute(
+            "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+            "VALUES (?, ?, 'hermes-live-agent', 'terminal', ?, ?, NULL)",
+            (f"a{i:03d}", ts, outcome, reason),
+        )
+    for i, latency in enumerate([5, 18, 40, 120]):
+        ts = (now - timedelta(minutes=i + 1)).strftime("%Y-%m-%d %H:%M:%S.%f")
+        conn.execute(
+            "INSERT INTO hermes_tool_traces "
+            "(id, timestamp, agent_id, hermes_tool_name, asf_tool_name, args_hash, verdict, "
+            "asf_latency_ms, created_at) "
+            "VALUES (?, ?, 'hermes-live-agent', 'terminal', 'terminal', 'args', 'ALLOW', ?, ?)",
+            (f"h{i:03d}", ts, latency, ts),
+        )
+    conn.commit()
+    conn.close()
+
+
+def test_metrics_exclude_governance_rbac_denials(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE audit_trail ("
+        "hash TEXT PRIMARY KEY, timestamp TEXT, agent_id TEXT, action TEXT, "
+        "outcome TEXT, reason TEXT, prev_hash TEXT)"
+    )
+    now = datetime.utcnow()
+    # 6 calls: 2 cleared, 2 governance-blocked, 1 RBAC-blocked, 1 content kill-switch.
+    rows = [
+        ("HEURISTIC_CLEAR", "Cleared by heuristic fast-path (score=0.00)"),
+        ("HEURISTIC_CLEAR", "Cleared by heuristic fast-path (score=0.01)"),
+        ("BLOCKED", "Agent suspended or not found"),
+        ("BLOCKED", "Agent suspended or not found"),
+        ("BLOCKED", "Tool 'vision_analyze' not in permissions: ['browser']"),
+        ("KILL_SWITCH", "KILL SWITCH ACTIVATED (Stage 2.5 DeBERTa)"),
+    ]
+    for i, (outcome, reason) in enumerate(rows):
+        ts = (now - timedelta(minutes=i + 1)).strftime("%Y-%m-%d %H:%M:%S.%f")
+        conn.execute(
+            "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+            "VALUES (?, ?, 'hermes-live-agent', 'terminal', 'INTERCEPTOR_START', 'Interceptor invoked', NULL)",
+            (f"s{i:03d}", ts),
+        )
+        conn.execute(
+            "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+            "VALUES (?, ?, 'hermes-live-agent', 'terminal', ?, ?, ?)",
+            (f"t{i:03d}", ts, outcome, reason, f"s{i:03d}"),
+        )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    # agent_id set => skip the cache branch and hit the audit_trail path directly.
+    metrics = asyncio.run(db.get_metrics(agent_id="hermes-live-agent"))
+
+    # 3 governance/RBAC denials excluded: total 6 -> 3, blocked 4 -> 1 (the kill-switch),
+    # allowed 2, detection_rate = 1 / (1 + 2).
+    assert metrics.total_tool_calls == 3
+    assert metrics.blocked_count == 1
+    assert metrics.allowed_count == 2
+    assert abs(metrics.detection_rate - (1 / 3)) < 1e-9
+
+
+def test_overview_charts_buckets_stages_reasons_and_latency(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_charts_db(db_path)
+    _point_dashboard_to(db_path, monkeypatch)
+
+    charts = asyncio.run(db.get_overview_charts(window="24h"))
+    stages = {s.stage: s for s in charts.stage_funnel}
+    reasons = {r.category: r.count for r in charts.block_reasons}
+
+    # Governance + RBAC denials are excluded from every chart dataset (funnel + reasons).
+    assert "Governance / RBAC" not in stages
+    assert "governance" not in reasons
+    assert "rbac" not in reasons
+    assert stages["L1.5 fast-path"].allowed == 2
+    assert stages["L1.5 fast-path"].blocked == 0
+    assert stages["Stage 2.5 DeBERTa"].blocked == 1
+    assert reasons["content_detection"] == 1
+
+    # Latency comes only from hermes_tool_traces.
+    assert charts.latency.sample_count == 4
+    assert sum(b.count for b in charts.latency.buckets) == 4
+    assert {a.agent_id for a in charts.per_agent} == {"hermes-live-agent"}
+
+
 def test_get_sessions_computes_legacy_audit_duration(tmp_path, monkeypatch):
     db_path = tmp_path / "asf_test.db"
     _create_test_db(db_path)
