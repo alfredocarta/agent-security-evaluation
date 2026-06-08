@@ -10,3 +10,13 @@ build/
 results/
 baselines/
 .DS_Store
+
+# knowledge graph (generated, regenerate with `graphify update .`)
+graphify-out/
+dashboard_v2/graphify-out/
+
+# local agent state
+.claude/
+
+# benchmark run logs
+benchmarks/*.log
