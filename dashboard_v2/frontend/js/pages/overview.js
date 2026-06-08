@@ -2,7 +2,7 @@ const { createApp } = Vue;
 (async () => {
   const content = await ASF.loadSection('overview');
   const app = createApp({
-    template: ASF.shell('overview', 'Overview', content),
+    template: ASF.shell('overview', 'Panoramica', content),
     data: () => ({
       metrics: {},
       lastRefresh: '',
@@ -38,11 +38,11 @@ const { createApp } = Vue;
       posture() {
         const m = this.metrics;
         const terminal = (m.blocked_count || 0) + (m.allowed_count || 0) + (m.hitl_count || 0);
-        if (!terminal) return { cls: 'posture-attn', label: 'No security decisions recorded', detail: 'The pipeline has not produced terminal verdicts in this dataset.' };
+        if (!terminal) return { cls: 'posture-attn', label: 'Nessuna decisione di sicurezza registrata', detail: 'La pipeline non ha prodotto verdetti terminali in questo dataset.' };
         const fresh = this.dataAsOf ? !this.freshness(this.dataAsOf).stale : false;
-        if (!fresh) return { cls: 'posture-attn', label: 'Operational - data not current', detail: 'Most recent audit event is over an hour old; figures may be stale.' };
-        if (m.hitl_count > 0) return { cls: 'posture-attn', label: 'Operational - human review pending', detail: `${m.hitl_count} escalation(s) routed to human oversight.` };
-        return { cls: 'posture-ok', label: 'Operational - controls active', detail: 'Tool calls are being inspected and terminal verdicts recorded.' };
+        if (!fresh) return { cls: 'posture-attn', label: 'Operativa - dati non aggiornati', detail: "L'evento di audit più recente risale a oltre un'ora fa; le metriche potrebbero non essere aggiornate." };
+        if (m.hitl_count > 0) return { cls: 'posture-attn', label: 'Operativa - revisione umana in attesa', detail: `${m.hitl_count} escalation instradata/e alla supervisione umana.` };
+        return { cls: 'posture-ok', label: 'Operativa - controlli attivi', detail: 'Le chiamate strumento vengono ispezionate e i verdetti terminali registrati.' };
       },
     },
     mounted() { this.startRefresh(); },
@@ -70,7 +70,7 @@ const { createApp } = Vue;
         } catch (_e) {
           // charts are a non-critical enrichment; keep KPIs rendering if this fails
         }
-        this.lastRefresh = new Date().toLocaleTimeString();
+        this.lastRefresh = new Date().toLocaleTimeString('it-IT');
       },
       async setChartsWindow(window) {
         if (this.chartsWindow === window) return;

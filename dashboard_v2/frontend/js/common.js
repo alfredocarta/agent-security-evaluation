@@ -1,9 +1,10 @@
 window.ASF = (() => {
   const navItems = [
-    { id: 'overview', label: 'Overview', href: '/overview', icon: '<path d="M1 1h6v6H1V1zm7 0h6v6H8V1zM1 8h6v6H1V8zm7 0h6v6H8V8z"/>' },
+    { id: 'overview', label: 'Panoramica', href: '/overview', icon: '<path d="M1 1h6v6H1V1zm7 0h6v6H8V1zM1 8h6v6H1V8zm7 0h6v6H8V8z"/>' },
     { id: 'sessions', label: 'Audit Trail', href: '/sessions', icon: '<path d="M1 2h13v2H1V2zm0 4h13v2H1V6zm0 4h9v2H1v-2z"/>' },
     { id: 'compliance', label: 'EU AI Act', href: '/compliance', icon: '<path d="M7.5 1 1.5 4v4c0 3.3 2.4 6.1 6 7 3.6-.9 6-3.7 6-7V4L7.5 1zm-1 9L4 7.5l.9-.9L6.5 8l3.1-3 .9.9L6.5 10z"/>' },
-    { id: 'hitl', label: 'Human Oversight', href: '/hitl', icon: '<path d="M7.5 1a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM2 9.5a5.5 5.5 0 0111 0V11H2V9.5zM1 12h13v2H1v-2z"/>', badge: true },
+    { id: 'hitl', label: 'Supervisione umana', href: '/hitl', icon: '<path d="M7.5 1a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM2 9.5a5.5 5.5 0 0111 0V11H2V9.5zM1 12h13v2H1v-2z"/>', badge: true },
+    { id: 'report', label: 'Report giornaliero', href: '/assets/report.html', icon: '<path d="M2 1h8l3 3v10H2V1zm7 1.5V5h2.5L9 2.5zM4 7h7v1H4V7zm0 2h7v1H4V9zm0 2h5v1H4v-1z"/>' },
   ];
 
   function shell(activeSection, title, content, modal = '') {
@@ -19,7 +20,7 @@ window.ASF = (() => {
           <div class="sidebar-logo">
             <div class="sidebar-logo-text">
               <div class="sidebar-logo-title">Agent Security Framework</div>
-              <div class="sidebar-logo-sub">Compliance &amp; Audit</div>
+              <div class="sidebar-logo-sub">Conformità &amp; Audit</div>
             </div>
           </div>
           <nav class="sidebar-nav">${nav}</nav>
@@ -32,15 +33,15 @@ window.ASF = (() => {
             <div class="topbar-title">Agent Security Framework / ${title}</div>
             <div class="topbar-actions">
               <div class="provenance">
-                <span v-if="dbSource" class="provenance-item" title="Audit data source">
+                <span v-if="dbSource" class="provenance-item" title="Origine dati di audit">
                   <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><ellipse cx="8" cy="3.5" rx="6" ry="2.2"/><path d="M2 6.2c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2V9c0 1.2-2.7 2.2-6 2.2S2 10.2 2 9V6.2z"/><path d="M2 9.8c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2v2.4c0 1.2-2.7 2.2-6 2.2s-6-1-6-2.2V9.8z"/></svg>
                   {{ dbSource }}
                 </span>
-                <span v-if="dataAsOf" class="provenance-item" :class="freshness(dataAsOf).stale ? 'provenance-stale' : 'provenance-fresh'" title="Most recent audit event">
+                <span v-if="dataAsOf" class="provenance-item" :class="freshness(dataAsOf).stale ? 'provenance-stale' : 'provenance-fresh'" title="Evento di audit più recente">
                   <span class="status-dot" :class="freshness(dataAsOf).stale ? 'status-dot-warning' : 'status-dot-success'"></span>
-                  data {{ freshness(dataAsOf).label }}
+                  dati {{ freshness(dataAsOf).label }}
                 </span>
-                <span class="provenance-item" title="Client view refreshed">refresh {{ lastRefresh || 'pending' }}<span v-if="refreshLabel"> · {{ refreshLabel }}</span></span>
+                <span class="provenance-item" title="Vista client aggiornata">aggiornata {{ lastRefresh || 'in attesa' }}<span v-if="refreshLabel"> · {{ refreshLabel }}</span></span>
               </div>
             </div>
           </header>
@@ -56,7 +57,7 @@ window.ASF = (() => {
 
   async function loadSection(name) {
     const r = await fetch(`/assets/sections/${name}.html`);
-    if (!r.ok) throw new Error(`Failed to load section: ${name}`);
+    if (!r.ok) throw new Error(`Impossibile caricare la sezione: ${name}`);
     return r.text();
   }
 
@@ -88,7 +89,7 @@ window.ASF = (() => {
   }
 
   function stageDisplay(stage) {
-    const technical = stage || 'Unknown stage';
+    const technical = stage || 'Stadio sconosciuto';
     const s = String(technical).toLowerCase();
     let label = 'Controllo ASF';
     let shortTech = technical;
@@ -138,7 +139,7 @@ window.ASF = (() => {
         this.dataAsOf = p.data_as_of || null;
       } catch (_e) { /* keep previous provenance on transient error */ }
     },
-    fmtNum(v) { return (v ?? 0).toLocaleString(); },
+    fmtNum(v) { return (v ?? 0).toLocaleString('it-IT'); },
     percent(v) { return `${Math.round((v || 0) * 100)}%`; },
     fmtLatency(ms) { return (!ms || ms === 0) ? '< 1' : String(Math.round(ms)); },
     parseUtcDate,
@@ -159,8 +160,8 @@ window.ASF = (() => {
       return `${((isBlocked ? blocked : allowed) / t) * 100}%`;
     },
     truncate(v, n) { v = v || ''; return v.length > n ? v.slice(0, n) + '…' : v; },
-    formatTime(v) { const d = parseUtcDate(v); return d ? d.toLocaleString() : ''; },
-    timeOnly(v) { const d = parseUtcDate(v); return d ? d.toLocaleTimeString() : ''; },
+    formatTime(v) { const d = parseUtcDate(v); return d ? d.toLocaleString('it-IT') : ''; },
+    timeOnly(v) { const d = parseUtcDate(v); return d ? d.toLocaleTimeString('it-IT') : ''; },
     decisionTone,
     verdictBadgeClass(ev) {
       const tone = decisionTone(ev);
@@ -192,14 +193,14 @@ window.ASF = (() => {
     },
     freshness(ts) {
       const d = parseUtcDate(ts);
-      if (!d) return { label: 'unknown', stale: true };
+      if (!d) return { label: 'sconosciuto', stale: true };
       const mins = Math.floor((Date.now() - d.getTime()) / 60000);
       const stale = mins > 60;
       let label;
-      if (mins < 1) label = 'just now';
-      else if (mins < 60) label = `${mins}m ago`;
-      else if (mins < 1440) label = `${Math.floor(mins / 60)}h ago`;
-      else label = `${Math.floor(mins / 1440)}d ago`;
+      if (mins < 1) label = 'proprio ora';
+      else if (mins < 60) label = `${mins} min fa`;
+      else if (mins < 1440) label = `${Math.floor(mins / 60)} h fa`;
+      else label = `${Math.floor(mins / 1440)} g fa`;
       return { label, stale };
     },
     stageBadgeClass(stage) {

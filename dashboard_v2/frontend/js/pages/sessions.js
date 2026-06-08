@@ -2,7 +2,7 @@ const { createApp } = Vue;
 (async () => {
   const content = await ASF.loadSection('sessions');
   createApp({
-    template: ASF.shell('sessions', 'Sessions', content),
+    template: ASF.shell('sessions', 'Sessioni', content),
   data: () => ({
     sessions: [], agents: [], selectedAgent: '', sessionEvents: [], sessionPageCache: {}, sessionHasMore: {},
     sessionLoadingMore: false, sessionPageSize: 20, sessionPage: 0, sessionsPage: 0, sessionsPageSize: 10,
@@ -32,14 +32,14 @@ const { createApp } = Vue;
       if (id.includes('hermes')) return { agentId: id, framework: 'Hermes Agent', model: 'gpt-5.5 via openai-codex' };
       if (id.includes('smolagents')) return { agentId: id, framework: 'ToolCallingAgent (smolagents)', model: 'gemma2:2b via Ollama' };
       if (id.includes('autogen')) return { agentId: id, framework: 'AutoGen async agent', model: 'gemma2:2b via Ollama (AutoGen async)' };
-      if (id.includes('sql-agent')) return { agentId: id, framework: 'SQL evaluation agent', model: 'Rule-based (no LLM)' };
+      if (id.includes('sql-agent')) return { agentId: id, framework: 'SQL evaluation agent', model: 'Basato su regole (no LLM)' };
       if (id.includes('asf-eval')) return { agentId: id, framework: 'LangGraph ReAct', model: 'LangGraph ReAct' };
       if (id.includes('crewai')) return { agentId: id, framework: 'CrewAI agent', model: 'gemma2:2b via Ollama (CrewAI)' };
-      if (id.includes('openhands')) return { agentId: id, framework: 'OpenHands CodeAct', model: 'not recorded' };
-      if (id.includes('pyrit')) return { agentId: id, framework: 'PyRIT red-team', model: 'not recorded' };
-      if (id.includes('promptfoo')) return { agentId: id, framework: 'promptfoo eval', model: 'not recorded' };
+      if (id.includes('openhands')) return { agentId: id, framework: 'OpenHands CodeAct', model: 'non registrato' };
+      if (id.includes('pyrit')) return { agentId: id, framework: 'PyRIT red-team', model: 'non registrato' };
+      if (id.includes('promptfoo')) return { agentId: id, framework: 'promptfoo eval', model: 'non registrato' };
       if (id.includes('claude-code')) return { agentId: id, framework: 'Claude Code (MCP)', model: 'claude-sonnet-4-6 via MCP' };
-      return { agentId: id, framework: 'unknown framework', model: 'not recorded' };
+      return { agentId: id, framework: 'framework sconosciuto', model: 'non registrato' };
     },
     expandedSessionTotalEvents() {
       if (!this.expandedSession) return this.sessionEvents.length || 0;
@@ -59,7 +59,7 @@ const { createApp } = Vue;
       this.agents = agents;
       await this.loadSessionsPage(this.sessionsPage, { force: true, collapse: false });
       this.loadProvenance();
-      this.lastRefresh = new Date().toLocaleTimeString();
+      this.lastRefresh = new Date().toLocaleTimeString('it-IT');
       if (this.expandedSession) this.loadSession(this.expandedSession);
     },
     async loadSessionsPage(page = this.sessionsPage, { force = false, collapse = true } = {}) {
@@ -71,7 +71,7 @@ const { createApp } = Vue;
       if (!force && cached) {
         this.sessionsPage = safePage; this.sessions = cached.sessions; this.sessionsHasMore = cached.hasMore;
         if (collapse) { this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.expandedEventDetails = new Set(); }
-        this.sessionsLoading = false; this.footerText = `${this.sessions.length} sessions · ASF v2`; return;
+        this.sessionsLoading = false; this.footerText = `${this.sessions.length} sessioni · ASF v2`; return;
       }
       this.sessionsLoading = true;
       const offset = safePage * pageSize;
@@ -84,7 +84,7 @@ const { createApp } = Vue;
         const pageData = { sessions: visibleRows, hasMore: rows.length === pageSize };
         this.sessionsPageCache = { ...this.sessionsPageCache, [pageKey]: pageData };
         this.sessionsPage = safePage; this.sessions = visibleRows; this.sessionsHasMore = pageData.hasMore;
-        this.footerText = `${this.sessions.length} sessions · ASF v2`;
+        this.footerText = `${this.sessions.length} sessioni · ASF v2`;
         if (collapse) { this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.expandedEventDetails = new Set(); }
       } finally { this.sessionsLoading = false; }
     },
@@ -123,16 +123,16 @@ const { createApp } = Vue;
     async nextSessionPage() { if (this.expandedSession && !this.sessionLoadingMore && this.sessionPage + 1 < this.expandedSessionTotalPages) await this.loadSession(this.expandedSession, this.sessionPage + 1); },
     async prevSessionPage() { if (this.expandedSession && !this.sessionLoadingMore && this.sessionPage !== 0) await this.loadSession(this.expandedSession, this.sessionPage - 1); },
     expandReason(id) { const s = new Set(this.expandedReasons); s.has(id) ? s.delete(id) : s.add(id); this.expandedReasons = s; },
-    frameworkForAgent(id) { return (id || '').includes('hermes') ? 'Hermes Agent' : 'framework not recorded'; },
-    modelForAgent(id) { return (id || '').includes('hermes') ? 'gpt-5.5 via openai-codex' : 'not recorded'; },
+    frameworkForAgent(id) { return (id || '').includes('hermes') ? 'Hermes Agent' : 'framework non registrato'; },
+    modelForAgent(id) { return (id || '').includes('hermes') ? 'gpt-5.5 via openai-codex' : 'non registrato'; },
     hitlDecisionMetadata(ev) {
       if (!ev) return null;
       const reviewer = ev.reviewer || ev.hitl_reviewer || ev.reviewed_by || ev.decision_reviewer;
       const note = ev.note || ev.hitl_note || ev.review_note || ev.decision_note || ev.human_note;
-      if (reviewer || note) return { reviewer: reviewer || 'not recorded', note: note || '' };
+      if (reviewer || note) return { reviewer: reviewer || 'non registrato', note: note || '' };
       const outcome = String(ev.outcome || '').toUpperCase(); if (!outcome.startsWith('HITL_') || outcome === 'HITL_REQUESTED') return null;
       const match = String(ev.reason || '').match(/reviewer:([^\n]*?)(?:\s+note:(.*))?$/); if (!match) return null;
-      const r = (match[1] || '').trim(); const n = (match[2] || '').trim(); return r || n ? { reviewer: r || 'unknown', note: n } : null;
+      const r = (match[1] || '').trim(); const n = (match[2] || '').trim(); return r || n ? { reviewer: r || 'sconosciuto', note: n } : null;
     },
     isTerminalEvent(ev) { return ['deny', 'allow', 'hitl'].includes(this.decisionTone(ev)); },
     isBlockedEvent(ev) { return this.decisionTone(ev) === 'deny'; },
@@ -172,7 +172,7 @@ const { createApp } = Vue;
     },
     stageStepTitle(stage, idx) {
       const display = this.stageDisplay(stage?.stage);
-      return `Step ${idx + 1}: ${display.label} (${display.technical})`;
+      return `Passo ${idx + 1}: ${display.label} (${display.technical})`;
     },
     async toggleEventDetails(ev) {
       if (!ev?.event_id) return;
@@ -201,12 +201,12 @@ const { createApp } = Vue;
             event_id: ev.event_id,
             final_verdict: ev.verdict,
             final_outcome: ev.outcome,
-            final_reason: ev.reason || 'No reason recorded.',
+            final_reason: ev.reason || 'Nessun motivo registrato.',
             security_model: ev.security_model,
             latency_ms: ev.latency_ms,
             pipeline: [{
-              stage: ev.stage || 'Unknown stage', outcome: ev.outcome, verdict: ev.verdict,
-              confidence: ev.confidence, reason: ev.reason || 'No reason recorded.',
+              stage: ev.stage || 'Stadio sconosciuto', outcome: ev.outcome, verdict: ev.verdict,
+              confidence: ev.confidence, reason: ev.reason || 'Nessun motivo registrato.',
               timestamp: ev.timestamp, latency_ms: ev.latency_ms, terminal: true,
             }],
           },
@@ -229,8 +229,8 @@ const { createApp } = Vue;
       const v = stage?.confidence;
       if (v == null || Number.isNaN(Number(v))) {
         const name = String(stage?.stage || '').toLowerCase();
-        if (name.includes('l1.5') || name.includes('policy') || name.includes('regex')) return 'rule-based';
-        return '—';
+        if (name.includes('l1.5') || name.includes('policy') || name.includes('regex')) return 'basato su regole';
+        return '-';
       }
       const n = Number(v);
       return n <= 1 ? `${(n * 100).toFixed(0)}%` : `${n.toFixed(1)}%`;
@@ -244,7 +244,7 @@ const { createApp } = Vue;
       return stages.filter(x => x && (x.stage || x.outcome || x.confidence != null))
         .slice().sort((a, b) => (this.parseUtcDate(a.timestamp)?.getTime() || 0) - (this.parseUtcDate(b.timestamp)?.getTime() || 0));
     },
-    formatConfidence(v) { if (v == null || Number.isNaN(Number(v))) return '—'; const n = Number(v); return n <= 1 ? `${(100 * n).toFixed(0)}%` : `${n.toFixed(1)}%`; },
+    formatConfidence(v) { if (v == null || Number.isNaN(Number(v))) return '-'; const n = Number(v); return n <= 1 ? `${(100 * n).toFixed(0)}%` : `${n.toFixed(1)}%`; },
   },
 }).mount('#app');
 })();
