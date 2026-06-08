@@ -41,6 +41,11 @@ class EventExplanation(BaseModel):
     session_id: str | None = None
     tool_name: str | None = None
     agent_id: str | None = None
+    agent_model: str | None = None
+    tool_input: str | None = None
+    tool_output: str | None = None
+    input_truncated: bool = False
+    output_truncated: bool = False
     final_verdict: str | None = None
     final_outcome: str | None = None
     final_reason: str = ""

@@ -724,10 +724,17 @@ def _expand_inferred_pipeline_stages(pipeline_events: list[AuditEvent]) -> list[
     return non_terminal_existing + inferred + [terminal_stage]
 
 
+def _preview_is_truncated(value: str | None) -> bool:
+    return bool(value and "[truncated " in value)
+
+
 def _event_explanation_from_pipeline(
     event_id: str,
     pipeline_events: list[AuditEvent],
     fallback: AuditEvent | None = None,
+    context_event: AuditEvent | None = None,
+    tool_input: str | None = None,
+    tool_output: str | None = None,
 ) -> EventExplanation:
     if not pipeline_events and fallback is not None:
         pipeline_events = [fallback]
@@ -740,12 +747,18 @@ def _event_explanation_from_pipeline(
             final_reason="No explanation data found for this event.",
             pipeline=[PipelineStage(stage="Unknown stage", reason="No explanation data found for this event.", terminal=True)],
         )
+    context = context_event or final
     return EventExplanation(
         event_id=event_id,
-        trace_id=final.trace_id,
-        session_id=final.session_id,
-        tool_name=final.tool_name or final.action,
-        agent_id=final.agent_id,
+        trace_id=context.trace_id or final.trace_id,
+        session_id=context.session_id or final.session_id,
+        tool_name=context.tool_name or context.action or final.tool_name or final.action,
+        agent_id=context.agent_id or final.agent_id,
+        agent_model=context.agent_model or final.agent_model,
+        tool_input=tool_input,
+        tool_output=tool_output,
+        input_truncated=_preview_is_truncated(tool_input),
+        output_truncated=_preview_is_truncated(tool_output),
         final_verdict=final.verdict,
         final_outcome=final.outcome,
         final_reason=final.reason or "No reason recorded.",
@@ -799,7 +812,7 @@ def _audit_chain_for_event(conn: sqlite3.Connection, event_id: str) -> list[dict
 def _hermes_rows_for_event(conn: sqlite3.Connection, event_id: str) -> list[dict[str, Any]]:
     anchor = conn.execute(
         "SELECT id, timestamp, agent_id, agent_type, agent_model, session_id, task_id, tool_call_id, "
-        "hermes_tool_name, asf_tool_name, verdict, outcome, reason, stage, confidence, "
+        "hermes_tool_name, asf_tool_name, args_preview, output_preview, verdict, outcome, reason, stage, confidence, "
         "asf_latency_ms, tool_duration_ms, trace_id, audit_hash "
         "FROM hermes_tool_traces WHERE id = ? OR audit_hash = ? OR trace_id = ? LIMIT 1",
         (event_id, event_id, event_id),
@@ -829,7 +842,7 @@ def _hermes_rows_for_event(conn: sqlite3.Connection, event_id: str) -> list[dict
             params.append(session_id)
     rows = [dict(row) for row in conn.execute(
         "SELECT id, timestamp, agent_id, agent_type, agent_model, session_id, task_id, tool_call_id, "
-        "hermes_tool_name, asf_tool_name, verdict, outcome, reason, stage, confidence, "
+        "hermes_tool_name, asf_tool_name, args_preview, output_preview, verdict, outcome, reason, stage, confidence, "
         "asf_latency_ms, tool_duration_ms, trace_id, audit_hash "
         "FROM hermes_tool_traces WHERE " + " OR ".join(clauses) + " ORDER BY timestamp ASC",
         params,
@@ -921,7 +934,15 @@ async def get_event_explanation(event_id: str) -> EventExplanation:
                     if len(chain) > 1:
                         resolved.extend(_normalize_event(row) for row in chain)
                 pipeline = resolved or hermes_events
-                explanation = _event_explanation_from_pipeline(event_id, pipeline)
+                anchor_row = hermes_rows[0]
+                anchor_event = hermes_events[0]
+                explanation = _event_explanation_from_pipeline(
+                    event_id,
+                    pipeline,
+                    context_event=anchor_event,
+                    tool_input=anchor_row.get("args_preview") or None,
+                    tool_output=anchor_row.get("output_preview") or None,
+                )
                 return _cache_set(cache_key, explanation, ttl=300.0)
 
         audit_rows = _audit_chain_for_event(conn, event_id)

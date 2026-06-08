@@ -461,6 +461,58 @@ def test_get_sessions_computes_legacy_audit_duration(tmp_path, monkeypatch):
     assert sessions[0].duration_ms == 375
 
 
+def test_event_explanation_exposes_hermes_input_output_and_model(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_test_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "UPDATE hermes_tool_traces SET args_preview = ?, output_preview = ?, agent_model = ? WHERE id = 'h000'",
+        ('{"command": "printf hello"}', '"hello"', "gpt-5.5 via openai-codex"),
+    )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    explanation = asyncio.run(db.get_event_explanation("h000"))
+
+    assert explanation.tool_name == "terminal"
+    assert explanation.agent_id == "hermes-live-agent"
+    assert explanation.agent_model == "gpt-5.5 via openai-codex"
+    assert explanation.tool_input == '{"command": "printf hello"}'
+    assert explanation.tool_output == '"hello"'
+    assert explanation.input_truncated is False
+    assert explanation.output_truncated is False
+
+
+def test_event_explanation_audit_only_has_no_input_output(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_test_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO audit_trail "
+        "(hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+        "VALUES ('audit-only-start', '2026-06-03 13:00:00', 'claude-code-agent', "
+        "'shell', 'INTERCEPTOR_START', 'Interceptor invoked', NULL)"
+    )
+    conn.execute(
+        "INSERT INTO audit_trail "
+        "(hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+        "VALUES ('audit-only-terminal', '2026-06-03 13:00:01', 'claude-code-agent', "
+        "'shell', 'ALLOWED', 'cleared', 'audit-only-start')"
+    )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    explanation = asyncio.run(db.get_event_explanation("audit-only-terminal"))
+
+    assert explanation.tool_name == "shell"
+    assert explanation.agent_id == "claude-code-agent"
+    assert explanation.tool_input is None
+    assert explanation.tool_output is None
+    assert explanation.agent_model is None
+
+
 def test_hermes_trace_explanation_recovers_full_pipeline_from_audit_trail(tmp_path, monkeypatch):
     db_path = tmp_path / "asf_test.db"
     _create_test_db(db_path)
@@ -491,10 +543,11 @@ def test_hermes_trace_explanation_recovers_full_pipeline_from_audit_trail(tmp_pa
     conn.execute(
         "INSERT INTO hermes_tool_traces "
         "(id, timestamp, agent_id, agent_type, agent_model, session_id, hermes_tool_name, "
-        "asf_tool_name, args_hash, verdict, outcome, reason, stage, asf_latency_ms, "
+        "asf_tool_name, args_hash, args_preview, output_preview, verdict, outcome, reason, stage, asf_latency_ms, "
         "tool_duration_ms, trace_id, audit_hash, created_at) "
         "VALUES ('htrace-deny', '2026-06-07T18:28:16', 'hermes-live-agent', 'Hermes Agent', "
-        "'gpt-5.5', 'sess-deny', 'terminal', 'shell', 'args', 'DENY', 'BLOCKED', "
+        "'gpt-5.5', 'sess-deny', 'terminal', 'shell', 'args', '{\"command\": \"rm -rf /tmp/x\"}', "
+        "'{\"exit_code\": 1}', 'DENY', 'BLOCKED', "
         "'KILL SWITCH ACTIVATED (Stage 2.5 DeBERTa)', NULL, NULL, 5368, NULL, NULL, "
         "'2026-06-07T18:28:16')"
     )
@@ -511,6 +564,9 @@ def test_hermes_trace_explanation_recovers_full_pipeline_from_audit_trail(tmp_pa
     assert outcomes[0] == "INTERCEPTOR_START"
     assert "KILL_SWITCH" in outcomes
     assert explanation.final_verdict == "DENY"
+    assert explanation.agent_model == "gpt-5.5"
+    assert explanation.tool_input == '{"command": "rm -rf /tmp/x"}'
+    assert explanation.tool_output == '{"exit_code": 1}'
 
 
 def test_hermes_trace_explanation_falls_back_when_no_audit_chain(tmp_path, monkeypatch):

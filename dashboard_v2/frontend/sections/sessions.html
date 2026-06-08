@@ -134,6 +134,22 @@ class="c-accent" style="cursor:pointer;font-size:12px;margin-left:4px;"
 <span>{{ explanationForEvent(ev).final_reason || ev.reason || 'No reason recorded.' }}</span>
 </div>
 </div>
+<div v-if="explanationForEvent(ev)" class="decision-context">
+<div class="decision-context-title">Decision context</div>
+<div class="decision-context-grid">
+<div class="decision-context-meta"><span>Agent</span><b>{{ explanationForEvent(ev).agent_id || ev.agent_id || 'not recorded' }}</b></div>
+<div class="decision-context-meta"><span>Model</span><b>{{ explanationForEvent(ev).agent_model || ev.agent_model || 'not recorded' }}</b></div>
+<div class="decision-context-meta"><span>Tool</span><b>{{ explanationForEvent(ev).tool_name || ev.tool_name || ev.action || 'not recorded' }}</b></div>
+</div>
+<div class="decision-io">
+<div class="decision-io-head"><span>Input</span><span v-if="explanationForEvent(ev).input_truncated" class="badge badge-neutral">truncated</span></div>
+<pre class="decision-io-block" :class="{ 'decision-io-empty': !explanationForEvent(ev).tool_input }">{{ explanationForEvent(ev).tool_input || 'input non registrato' }}</pre>
+</div>
+<div class="decision-io">
+<div class="decision-io-head"><span>Output</span><span v-if="explanationForEvent(ev).output_truncated" class="badge badge-neutral">truncated</span></div>
+<pre class="decision-io-block" :class="{ 'decision-io-empty': !explanationForEvent(ev).tool_output }">{{ explanationForEvent(ev).tool_output || 'output non registrato' }}</pre>
+</div>
+</div>
 <div v-if="loadingEventDetails.has(ev.event_id) && !explanationForEvent(ev)" style="font-size:13px;color:var(--text-muted);">Loading explanation…</div>
 <div v-else class="pipeline-timeline">
 <div v-for="(stageEv, idx) in explanationPipeline(ev)" :key="ev.event_id + '-stage-' + idx" class="pipeline-stage" :class="stageToneClass(stageEv)">
