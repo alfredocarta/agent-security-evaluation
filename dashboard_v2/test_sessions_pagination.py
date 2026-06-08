@@ -510,7 +510,54 @@ def test_event_explanation_audit_only_has_no_input_output(tmp_path, monkeypatch)
     assert explanation.agent_id == "claude-code-agent"
     assert explanation.tool_input is None
     assert explanation.tool_output is None
-    assert explanation.agent_model is None
+    assert explanation.agent_model == "claude-sonnet-4-6 via MCP"
+
+
+def test_event_explanation_exposes_claude_input_output_and_model(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_test_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE claude_tool_traces ("
+        "id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'claude-code', "
+        "agent_id TEXT NOT NULL, agent_model TEXT, session_id TEXT, transcript_path TEXT, "
+        "tool_call_id TEXT, claude_tool_name TEXT NOT NULL, asf_tool_name TEXT NOT NULL, "
+        "args_hash TEXT NOT NULL, args_preview TEXT, output_hash TEXT, output_preview TEXT, "
+        "verdict TEXT, outcome TEXT, reason TEXT, trace_id TEXT, audit_hash TEXT, created_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO audit_trail "
+        "(hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+        "VALUES ('claude-start', '2026-06-03 14:00:00', 'claude-code-agent', "
+        "'shell', 'INTERCEPTOR_START', 'Interceptor invoked', NULL)"
+    )
+    conn.execute(
+        "INSERT INTO audit_trail "
+        "(hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+        "VALUES ('claude-terminal', '2026-06-03 14:00:01', 'claude-code-agent', "
+        "'shell', 'BLOCKED', 'blocked', 'claude-start')"
+    )
+    conn.execute(
+        "INSERT INTO claude_tool_traces "
+        "(id, timestamp, agent_id, agent_model, session_id, tool_call_id, claude_tool_name, "
+        "asf_tool_name, args_hash, args_preview, output_hash, output_preview, verdict, outcome, "
+        "reason, trace_id, audit_hash, created_at) "
+        "VALUES ('ct1', '2026-06-03T14:00:01', 'claude-code-agent', 'claude-opus-test', "
+        "'session-claude', 'call-1', 'Bash', 'shell', 'args', '{\"command\": \"grep bad file\"}', "
+        "'out', '{\"stdout\": \"match\"}', 'DENY', 'BLOCKED', 'blocked', 'trace-c1', "
+        "'claude-terminal', '2026-06-03T14:00:01')"
+    )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    explanation = asyncio.run(db.get_event_explanation("claude-terminal"))
+
+    assert explanation.agent_id == "claude-code-agent"
+    assert explanation.agent_model == "claude-opus-test"
+    assert explanation.tool_name == "Bash"
+    assert explanation.tool_input == '{"command": "grep bad file"}'
+    assert explanation.tool_output == '{"stdout": "match"}'
 
 
 def test_hermes_trace_explanation_recovers_full_pipeline_from_audit_trail(tmp_path, monkeypatch):

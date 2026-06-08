@@ -82,6 +82,10 @@ def _ensure_query_indexes(conn: sqlite3.Connection, db_path: Path) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_hermes_tool_traces_session_ts ON hermes_tool_traces(session_id, timestamp ASC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_hermes_tool_traces_trace_ts ON hermes_tool_traces(trace_id, timestamp ASC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_hermes_tool_traces_id ON hermes_tool_traces(id)")
+    if _has_claude_trace_schema(db_path):
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_claude_tool_traces_audit_hash ON claude_tool_traces(audit_hash)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_claude_tool_traces_tool_call ON claude_tool_traces(tool_call_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_claude_tool_traces_session_ts ON claude_tool_traces(session_id, timestamp ASC)")
     _INDEXED_DB_PATHS.add(key)
 
 
@@ -191,6 +195,20 @@ def _has_hermes_trace_schema(path: Path) -> bool:
         with sqlite3.connect(path) as conn:
             row = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='hermes_tool_traces'"
+            ).fetchone()
+            return row is not None
+    except sqlite3.Error:
+        return False
+
+
+def _has_claude_trace_schema(path: Path) -> bool:
+    if not path.exists():
+        return False
+
+    try:
+        with sqlite3.connect(path) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='claude_tool_traces'"
             ).fetchone()
             return row is not None
     except sqlite3.Error:
@@ -449,6 +467,7 @@ def _normalize_event(row: dict[str, Any]) -> AuditEvent:
     outcome = row.get("outcome") or ""
     reason = row.get("reason") or ""
     article, control = ARTICLE_BY_OUTCOME.get(outcome, (None, None))
+    _, model = _agent_metadata(row.get("agent_id") or "")
     return AuditEvent(
         event_id=row.get("hash") or "",
         timestamp=str(row.get("timestamp") or ""),
@@ -465,7 +484,7 @@ def _normalize_event(row: dict[str, Any]) -> AuditEvent:
         tool_name=row.get("action") or None,
         stage=_extract_stage(outcome, reason),
         verdict=_infer_verdict(outcome),
-        agent_model=None,
+        agent_model=model,
         security_model=_infer_security_model(outcome, reason),
         prev_hash=row.get("prev_hash"),
     )
@@ -903,6 +922,17 @@ def _audit_chain_for_hermes_trace(conn: sqlite3.Connection, trace_row: dict[str,
     return _audit_chain_for_event(conn, best.get("hash"))
 
 
+def _claude_row_for_event(conn: sqlite3.Connection, event_id: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT id, timestamp, agent_id, agent_model, session_id, transcript_path, tool_call_id, "
+        "claude_tool_name, asf_tool_name, args_preview, output_preview, verdict, outcome, reason, "
+        "trace_id, audit_hash "
+        "FROM claude_tool_traces WHERE id = ? OR audit_hash = ? OR trace_id = ? LIMIT 1",
+        (event_id, event_id, event_id),
+    ).fetchone()
+    return dict(row) if row is not None else None
+
+
 async def get_event_explanation(event_id: str) -> EventExplanation:
     cache_key = ("event_explanation", event_id)
     cached = _cache_get(cache_key)
@@ -948,7 +978,20 @@ async def get_event_explanation(event_id: str) -> EventExplanation:
         audit_rows = _audit_chain_for_event(conn, event_id)
         audit_events = [_normalize_event(row) for row in audit_rows]
         if audit_events:
-            explanation = _event_explanation_from_pipeline(event_id, audit_events)
+            claude_row = _claude_row_for_event(conn, event_id) if _has_claude_trace_schema(db_path) else None
+            if claude_row:
+                context = audit_events[-1]
+                context.agent_model = claude_row.get("agent_model") or context.agent_model
+                context.tool_name = claude_row.get("claude_tool_name") or context.tool_name
+                explanation = _event_explanation_from_pipeline(
+                    event_id,
+                    audit_events,
+                    context_event=context,
+                    tool_input=claude_row.get("args_preview") or None,
+                    tool_output=claude_row.get("output_preview") or None,
+                )
+            else:
+                explanation = _event_explanation_from_pipeline(event_id, audit_events)
             return _cache_set(cache_key, explanation, ttl=300.0)
 
     explanation = EventExplanation(
