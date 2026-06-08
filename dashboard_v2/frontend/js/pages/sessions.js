@@ -144,7 +144,17 @@ const { createApp } = Vue;
       return 'event-details-btn';
     },
     explanationForEvent(ev) { return ev?.event_id ? this.eventExplanations[ev.event_id] : null; },
-    explanationPipeline(ev) { return this.explanationForEvent(ev)?.pipeline || []; },
+    explanationPipeline(ev) {
+      const pipeline = this.explanationForEvent(ev)?.pipeline || [];
+      // Drop procedural "*_START" markers (INTERCEPTOR_START, STAGE_x_START): they only
+      // signal a stage began, add no decision info, and produce consecutive duplicate
+      // steps. Keep the meaningful outcomes; fall back to the full list if filtering empties it.
+      const meaningful = pipeline.filter(s => {
+        const o = String(s?.outcome || '').toUpperCase();
+        return o !== 'INTERCEPTOR_START' && !o.endsWith('_START');
+      });
+      return meaningful.length ? meaningful : pipeline;
+    },
     terminalStageIndex(ev) {
       const stages = this.explanationPipeline(ev);
       if (!stages.length) return 0;
