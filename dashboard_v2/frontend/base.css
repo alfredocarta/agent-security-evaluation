@@ -86,6 +86,19 @@
 .ev-state-na{background:transparent;color:var(--text-muted);border-color:var(--border)}
 .ev-state-na::before{display:none}
 
+/* --- block catalog by agent (overview) --- */
+.bc{display:flex;flex-direction:column;gap:14px}
+.bc-row{border:1px solid var(--border-subtle);border-radius:8px;background:rgba(255,255,255,.012);padding:10px 12px}
+.bc-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:7px;align-items:center}
+.bc-agent{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-primary);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bc-total{font-size:11px;color:var(--text-muted);white-space:nowrap}
+.bc-track{height:14px;min-width:42px;max-width:100%;display:flex;overflow:hidden;border-radius:999px;background:var(--bg-card);border:1px solid var(--border)}
+.bc-seg{height:100%;min-width:2px}
+.bc-legend{display:flex;flex-wrap:wrap;gap:7px 12px;margin-top:8px}
+.bc-leg{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);line-height:1.4}
+.bc-leg b{color:var(--text-primary);font-weight:700}
+.bc-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
 /* --- posture banner (overview) --- */
 .posture-banner{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border:1px solid var(--border);border-left-width:3px;border-radius:8px;padding:13px 16px;background:var(--bg-card)}
 .posture-ok{border-left-color:var(--allow)}

@@ -19,6 +19,8 @@ from .models import (
     SessionSummary,
     StageBucket,
     ReasonBucket,
+    BlockCatalogBucket,
+    BlockCatalogDetail,
     LatencyBucket,
     LatencyDistribution,
     TimelinePoint,
@@ -116,6 +118,14 @@ EVAL_TOOL_AGENTS = {
     "smolagents-eval-agent",
     "sql-agent-asf-eval-agent",
     "sanity-agent",
+    # Multi-agent scenario / unit-test agents written to the audit DB by the framework
+    # test suite (tests/conftest.py). They are not real traffic and must not pollute
+    # per-agent charts, sessions or KPIs. Root fix is test isolation (temp DATABASE_URL).
+    "billing_agent",
+    "analytics_agent",
+    "db_agent",
+    "researcher_agent",
+    "triage_agent",
 }
 
 AGENT_METADATA: dict[str, tuple[str, str | None]] = {
@@ -405,6 +415,8 @@ def _extract_stage(outcome: str, reason: str | None) -> str:
         return "ASF unavailable"
     if "heuristic" in r or "fast-path" in r:
         return "L1.5 fast-path"
+    if "stage 2.5b" in r or ("prompt guard" in r and "stage 2.5" in r):
+        return "Stage 2.5b Prompt Guard"
     if "deberta" in r or "stage 2.5" in r:
         return "Stage 2.5 DeBERTa"
     if "onnx" in r and "prompt guard" in r:
@@ -1723,11 +1735,69 @@ def _classify_block_reason(outcome: str, reason: str | None) -> str:
         return "rbac"
     if outcome == "OUTPUT_BLOCK":
         return "output_guard"
-    detection_markers = ("heuristic", "fast-path", "regex", "classifier", "deberta",
-                         "stage 2", "stage 3", "onnx", "prompt guard", "llm", "kill switch")
-    if outcome == "KILL_SWITCH" or any(marker in r for marker in detection_markers):
+    if outcome in BLOCK_OUTCOMES:
         return "content_detection"
     return "other"
+
+
+_SCORE_RE = re.compile(r"(?:score|confidence|p|prob(?:a)?)[=: ]+([0-9]*\.?[0-9]+)", re.IGNORECASE)
+
+
+def _score_bucket(reason: str | None) -> str | None:
+    match = _SCORE_RE.search(reason or "")
+    if not match:
+        return None
+    try:
+        value = float(match.group(1))
+    except ValueError:
+        return None
+    value = max(0.0, min(1.0, value))
+    low = int(value * 10) / 10
+    high = min(1.0, low + 0.099)
+    return f"score {low:.1f}-{high:.1f}"
+
+
+def _block_catalog_detail(mechanism: str, outcome: str, reason: str | None) -> str:
+    text = reason or ""
+    lower = text.lower()
+    if mechanism == "Stage 1":
+        match = re.search(r"regex match:\s*(.+)$", text, re.IGNORECASE)
+        if match:
+            pattern = re.sub(r"\s+", " ", match.group(1)).strip()
+            return f"regex: {pattern[:80]}"
+        return "regex match"
+    if mechanism == "L1.5 fast-path":
+        return _score_bucket(text) or "heuristic block"
+    if mechanism == "Stage 2":
+        return _score_bucket(text) or "classifier block"
+    if mechanism == "Stage 2.5 DeBERTa":
+        label = "DANGEROUS"
+        match = re.search(r"deberta:\s*([A-Z_ -]+?)(?:\s+(?:p|score|confidence|prob)|$)", text, re.IGNORECASE)
+        if match:
+            label = re.sub(r"\s+", "_", match.group(1).strip().upper())
+        score = _score_bucket(text)
+        return f"{label} {score}" if score else label
+    if mechanism == "Stage 2.5b Prompt Guard":
+        if "dangerous" in lower:
+            return "DANGEROUS"
+        if "unavailable" in lower:
+            return "UNAVAILABLE"
+        return "prompt guard block"
+    if mechanism.startswith("Stage 3"):
+        if "fail closed" in lower:
+            return "fail closed"
+        if "dangerous" in lower:
+            return "dangerous"
+        if "error" in lower:
+            return "error"
+        return "stage 3 block"
+    if mechanism == "Output Guard":
+        return "output block"
+    return "other"
+
+
+def _block_catalog_mechanism(outcome: str, reason: str | None) -> str:
+    return _extract_stage(outcome, reason)
 
 
 async def get_overview_charts(window: str = "24h", agent_id: str | None = None) -> OverviewCharts:
@@ -1752,6 +1822,7 @@ async def get_overview_charts(window: str = "24h", agent_id: str | None = None) 
     }
     timeline_acc: dict[str, dict[str, int]] = {}
     agent_acc: dict[str, dict[str, int]] = {}
+    catalog_acc: dict[tuple[str, str], dict[str, Any]] = {}
 
     if _has_audit_schema(db_path):
         placeholders = ",".join("?" for _ in TERMINAL_OUTCOMES)
@@ -1779,6 +1850,12 @@ async def get_overview_charts(window: str = "24h", agent_id: str | None = None) 
                 f"SELECT agent_id, outcome, COUNT(*) FROM audit_trail "
                 f"WHERE outcome IN ({placeholders}) AND timestamp >= ?{exclude_gov} GROUP BY agent_id, outcome",
                 terminal + [cutoff] + gov_params,
+            ).fetchall()
+            catalog_rows = conn.execute(
+                f"SELECT agent_id, outcome, reason, COUNT(*) FROM audit_trail "
+                f"WHERE outcome IN ({placeholders}) AND timestamp >= ?{agent_clause}{exclude_gov} "
+                f"GROUP BY agent_id, outcome, reason",
+                terminal + [cutoff] + agent_params + gov_params,
             ).fetchall()
 
         for outcome, reason, count in decision_rows:
@@ -1815,6 +1892,15 @@ async def get_overview_charts(window: str = "24h", agent_id: str | None = None) 
             elif verdict == "ALLOW":
                 entry["allowed"] += count
 
+        for agent, outcome, reason, count in catalog_rows:
+            if agent in EVAL_TOOL_AGENTS or _infer_verdict(outcome) != "DENY":
+                continue
+            mechanism = _block_catalog_mechanism(outcome, reason)
+            detail = _block_catalog_detail(mechanism, outcome, reason)
+            entry = catalog_acc.setdefault((agent, mechanism), {"count": 0, "details": {}})
+            entry["count"] += count
+            entry["details"][detail] = entry["details"].get(detail, 0) + count
+
     latency = _latency_distribution(db_path, cutoff, agent_id)
 
     stage_funnel = [
@@ -1833,10 +1919,26 @@ async def get_overview_charts(window: str = "24h", agent_id: str | None = None) 
         )
         for agent, v in sorted(agent_acc.items(), key=lambda kv: kv[1]["total"], reverse=True)
     ]
+    block_catalog = [
+        BlockCatalogBucket(
+            agent_id=agent,
+            mechanism=mechanism,
+            count=v["count"],
+            details=[
+                BlockCatalogDetail(detail=detail, count=detail_count)
+                for detail, detail_count in sorted(v["details"].items(), key=lambda kv: (-kv[1], kv[0]))[:5]
+            ],
+        )
+        for (agent, mechanism), v in sorted(
+            catalog_acc.items(),
+            key=lambda kv: (kv[0][0], _stage_order_key(kv[0][1]), -kv[1]["count"]),
+        )
+    ]
 
     result = OverviewCharts(
         window=window, db_source=db_source, stage_funnel=stage_funnel,
-        block_reasons=block_reasons, latency=latency, timeline=timeline, per_agent=per_agent,
+        block_reasons=block_reasons, block_catalog=block_catalog,
+        latency=latency, timeline=timeline, per_agent=per_agent,
     )
     return _cache_set(cache_key, result, ttl=10.0)
 

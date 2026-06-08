@@ -105,6 +105,18 @@ class ReasonBucket(BaseModel):
     count: int
 
 
+class BlockCatalogDetail(BaseModel):
+    detail: str
+    count: int
+
+
+class BlockCatalogBucket(BaseModel):
+    agent_id: str
+    mechanism: str
+    count: int
+    details: list[BlockCatalogDetail] = []
+
+
 class LatencyBucket(BaseModel):
     label: str
     count: int
@@ -138,6 +150,7 @@ class OverviewCharts(BaseModel):
     db_source: str | None = None
     stage_funnel: list[StageBucket]
     block_reasons: list[ReasonBucket]
+    block_catalog: list[BlockCatalogBucket]
     latency: LatencyDistribution
     timeline: list[TimelinePoint]
     per_agent: list[AgentPosture]

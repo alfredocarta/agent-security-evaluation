@@ -329,18 +329,20 @@ def _create_charts_db(path):
     )
     now = datetime.utcnow()
     rows = [
-        ("HEURISTIC_CLEAR", "Cleared by heuristic fast-path (score=0.00)"),
-        ("HEURISTIC_CLEAR", "Cleared by heuristic fast-path (score=0.01)"),
-        ("BLOCKED", "Agent suspended or not found"),
-        ("BLOCKED", "Tool 'vision_analyze' not in permissions: ['browser']"),
-        ("KILL_SWITCH", "KILL SWITCH ACTIVATED (Stage 2.5 DeBERTa)"),
+        ("hermes-live-agent", "HEURISTIC_CLEAR", "Cleared by heuristic fast-path (score=0.00)"),
+        ("hermes-live-agent", "HEURISTIC_CLEAR", "Cleared by heuristic fast-path (score=0.01)"),
+        ("hermes-live-agent", "BLOCKED", "Agent suspended or not found"),
+        ("hermes-live-agent", "BLOCKED", "Tool 'vision_analyze' not in permissions: ['browser']"),
+        ("hermes-live-agent", "KILL_SWITCH", "Stage 2.5 DeBERTa: INJECTION p=0.99"),
+        ("claude-code-agent", "KILL_SWITCH", "Stage 1 regex match: ignore previous instructions"),
+        ("claude-code-agent", "OUTPUT_BLOCK", "Output guard blocked canary leak"),
     ]
-    for i, (outcome, reason) in enumerate(rows):
+    for i, (agent, outcome, reason) in enumerate(rows):
         ts = (now - timedelta(minutes=i + 1)).strftime("%Y-%m-%d %H:%M:%S.%f")
         conn.execute(
             "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
-            "VALUES (?, ?, 'hermes-live-agent', 'terminal', ?, ?, NULL)",
-            (f"a{i:03d}", ts, outcome, reason),
+            "VALUES (?, ?, ?, 'terminal', ?, ?, NULL)",
+            (f"a{i:03d}", ts, agent, outcome, reason),
         )
     for i, latency in enumerate([5, 18, 40, 120]):
         ts = (now - timedelta(minutes=i + 1)).strftime("%Y-%m-%d %H:%M:%S.%f")
@@ -416,7 +418,18 @@ def test_overview_charts_buckets_stages_reasons_and_latency(tmp_path, monkeypatc
     assert stages["L1.5 fast-path"].allowed == 2
     assert stages["L1.5 fast-path"].blocked == 0
     assert stages["Stage 2.5 DeBERTa"].blocked == 1
-    assert reasons["content_detection"] == 1
+    assert stages["Stage 1"].blocked == 1
+    assert stages["Output Guard"].blocked == 1
+    assert reasons["content_detection"] == 2
+    assert reasons["output_guard"] == 1
+
+    catalog = {(b.agent_id, b.mechanism): b for b in charts.block_catalog}
+    assert ("hermes-live-agent", "Stage 2.5 DeBERTa") in catalog
+    assert catalog[("hermes-live-agent", "Stage 2.5 DeBERTa")].count == 1
+    assert catalog[("hermes-live-agent", "Stage 2.5 DeBERTa")].details[0].detail == "INJECTION score 0.9-1.0"
+    assert catalog[("claude-code-agent", "Stage 1")].details[0].detail.startswith("regex:")
+    assert catalog[("claude-code-agent", "Output Guard")].count == 1
+    assert not any(b.mechanism in {"Governance / RBAC", "L1.5"} for b in charts.block_catalog)
 
     # Funnel rows follow control-pipeline order, not descending volume.
     order = [s.stage for s in charts.stage_funnel]
@@ -425,7 +438,7 @@ def test_overview_charts_buckets_stages_reasons_and_latency(tmp_path, monkeypatc
     # Latency comes only from hermes_tool_traces.
     assert charts.latency.sample_count == 4
     assert sum(b.count for b in charts.latency.buckets) == 4
-    assert {a.agent_id for a in charts.per_agent} == {"hermes-live-agent"}
+    assert {a.agent_id for a in charts.per_agent} == {"hermes-live-agent", "claude-code-agent"}
 
 
 def test_get_sessions_computes_legacy_audit_duration(tmp_path, monkeypatch):

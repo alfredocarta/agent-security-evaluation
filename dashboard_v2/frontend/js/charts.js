@@ -183,12 +183,61 @@ window.ASFCharts = (() => {
     </div>`,
   };
 
+  const ChartBlockCatalog = {
+    props: { items: { type: Array, default: () => [] } },
+    computed: {
+      agents() {
+        const out = new Map();
+        for (const row of this.items || []) {
+          const agent = row.agent_id || 'unknown-agent';
+          if (!out.has(agent)) out.set(agent, { agent_id: agent, total: 0, mechanisms: [] });
+          const entry = out.get(agent);
+          entry.total += row.count || 0;
+          entry.mechanisms.push(row);
+        }
+        return Array.from(out.values()).sort((a, b) => b.total - a.total);
+      },
+      maxTotal() { return Math.max(1, ...this.agents.map(a => a.total || 0)); },
+    },
+    methods: {
+      agentWidth(total) { return `${(100 * (total || 0) / this.maxTotal).toFixed(1)}%`; },
+      segmentWidth(count, total) { return total ? `${(100 * (count || 0) / total).toFixed(1)}%` : '0%'; },
+      stageLabel(stage) { return stageDisplay(stage).label; },
+      stageTechnical(stage) { return stageDisplay(stage).technical; },
+      color(stage) { return stageColor(stage); },
+      details(row) {
+        const details = (row.details || []).map(d => `${d.detail}: ${d.count}`).join(' | ');
+        return `${row.agent_id} / ${this.stageTechnical(row.mechanism)}: ${row.count}${details ? ' | ' + details : ''}`;
+      },
+    },
+    template: `<div class="bc">
+      <div v-if="!items.length" class="chart-empty">No content blocks in window</div>
+      <div v-for="agent in agents" :key="agent.agent_id" class="bc-row">
+        <div class="bc-head">
+          <span class="bc-agent" :title="agent.agent_id">{{ agent.agent_id }}</span>
+          <span class="bc-total">{{ agent.total }} blocks</span>
+        </div>
+        <div class="bc-track" :style="{ width: agentWidth(agent.total) }">
+          <div v-for="row in agent.mechanisms" :key="agent.agent_id + row.mechanism"
+               class="bc-seg" :style="{ width: segmentWidth(row.count, agent.total), background: color(row.mechanism) }"
+               :title="details(row)"></div>
+        </div>
+        <div class="bc-legend">
+          <span v-for="row in agent.mechanisms" :key="agent.agent_id + row.mechanism + '-leg'" class="bc-leg" :title="details(row)">
+            <span class="bc-dot" :style="{ background: color(row.mechanism) }"></span>{{ stageLabel(row.mechanism) }} <b>{{ row.count }}</b>
+          </span>
+        </div>
+      </div>
+    </div>`,
+  };
+
   const components = {
     'chart-sparkline': Sparkline,
     'chart-funnel': ChartFunnel,
     'chart-donut': ChartDonut,
     'chart-histogram': ChartHistogram,
     'chart-hbar': ChartHBar,
+    'chart-block-catalog': ChartBlockCatalog,
     'chart-timeline': ChartTimeline,
   };
 
