@@ -19,6 +19,10 @@ window.ASFCharts = (() => {
   };
 
   // Distinct color per pipeline stage, for the "blocks by detection stage" donut.
+  function stageDisplay(stage) {
+    return window.ASF && ASF.stageDisplay ? ASF.stageDisplay(stage) : { label: stage || 'Unknown stage', technical: stage || 'Unknown stage', shortTech: stage || 'Unknown stage' };
+  }
+
   function stageColor(stage) {
     const s = (stage || '').toLowerCase();
     if (s.includes('output guard')) return 'var(--partial)';
@@ -62,14 +66,16 @@ window.ASFCharts = (() => {
     methods: {
       barWidth(t) { return `${(100 * (t || 0) / this.maxTotal).toFixed(1)}%`; },
       seg(v, total) { return total ? `${(100 * (v || 0) / total).toFixed(1)}%` : '0%'; },
+      stageLabel(stage) { return stageDisplay(stage).label; },
+      stageTechnical(stage) { return stageDisplay(stage).technical; },
     },
     template: `<div class="cf">
       <div v-if="!items.length" class="chart-empty">No pipeline decisions in window</div>
       <div v-for="it in items" :key="it.stage" class="cf-row">
-        <div class="cf-label" :title="it.stage">{{ it.stage }}</div>
+        <div class="cf-label" :title="stageTechnical(it.stage)">{{ stageLabel(it.stage) }}</div>
         <div class="cf-track">
           <div class="cf-bar" :style="{ width: barWidth(it.total) }"
-               :title="it.stage + ': ' + it.total + ' (blocked ' + it.blocked + ' / allowed ' + it.allowed + ' / hitl ' + it.hitl + ')'">
+               :title="stageTechnical(it.stage) + ': ' + it.total + ' (blocked ' + it.blocked + ' / allowed ' + it.allowed + ' / hitl ' + it.hitl + ')'">
             <div class="cf-seg cf-block" :style="{ width: seg(it.blocked, it.total) }"></div>
             <div class="cf-seg cf-hitl" :style="{ width: seg(it.hitl, it.total) }"></div>
             <div class="cf-seg cf-allow" :style="{ width: seg(it.allowed, it.total) }"></div>
@@ -110,7 +116,7 @@ window.ASFCharts = (() => {
           <text :x="size / 2" :y="size / 2" text-anchor="middle" dominant-baseline="central" class="cd-total">{{ total }}</text>
         </svg>
         <div class="cd-legend">
-          <div v-for="s in segments" :key="s.label" class="cd-leg">
+          <div v-for="s in segments" :key="s.label" class="cd-leg" :title="s.technical || s.label">
             <span class="cd-dot" :style="{ background: s.color }"></span>{{ s.label }} <b>{{ s.value }}</b>
           </div>
         </div>
@@ -191,6 +197,7 @@ window.ASFCharts = (() => {
     REASON_COLORS,
     REASON_LABELS,
     stageColor,
+    stageDisplay,
     install(app) {
       Object.entries(components).forEach(([name, def]) => app.component(name, def));
     },

@@ -22,7 +22,10 @@ const { createApp } = Vue;
         const funnel = (this.charts && this.charts.stage_funnel) || [];
         return funnel
           .filter(s => (s.blocked || 0) > 0)
-          .map(s => ({ label: s.stage, value: s.blocked, color: ASFCharts.stageColor(s.stage) }));
+          .map(s => {
+            const display = ASF.stageDisplay(s.stage);
+            return { label: display.label, technical: display.technical, value: s.blocked, color: ASFCharts.stageColor(s.stage) };
+          });
       },
       callsSpark() {
         const tl = (this.charts && this.charts.timeline) || [];

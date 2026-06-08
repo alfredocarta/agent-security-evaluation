@@ -7,7 +7,7 @@ const { createApp } = Vue;
     sessions: [], agents: [], selectedAgent: '', sessionEvents: [], sessionPageCache: {}, sessionHasMore: {},
     sessionLoadingMore: false, sessionPageSize: 20, sessionPage: 0, sessionsPage: 0, sessionsPageSize: 10,
     sessionsPageCache: {}, sessionsHasMore: false, sessionsLoading: false, expandedSession: null,
-    loadingSession: false, expandedReasons: new Set(), expandedEventDetails: new Set(), eventExplanations: {}, loadingEventDetails: new Set(), sessionSearch: '',
+    loadingSession: false, expandedReasons: new Set(), expandedEventDetails: new Set(), eventExplanations: {}, loadingEventDetails: new Set(), selectedPipelineStages: {}, sessionSearch: '',
     lastRefresh: '', refreshLabel: '5s', footerText: 'ASF v2', dataAsOf: null, dbSource: '',
   }),
   computed: {
@@ -145,6 +145,32 @@ const { createApp } = Vue;
     },
     explanationForEvent(ev) { return ev?.event_id ? this.eventExplanations[ev.event_id] : null; },
     explanationPipeline(ev) { return this.explanationForEvent(ev)?.pipeline || []; },
+    terminalStageIndex(ev) {
+      const stages = this.explanationPipeline(ev);
+      if (!stages.length) return 0;
+      const idx = stages.findIndex(s => s && s.terminal);
+      return idx >= 0 ? idx : stages.length - 1;
+    },
+    selectedPipelineIndex(ev) {
+      if (!ev?.event_id) return 0;
+      const stages = this.explanationPipeline(ev);
+      if (!stages.length) return 0;
+      const stored = this.selectedPipelineStages[ev.event_id];
+      if (Number.isInteger(stored) && stored >= 0 && stored < stages.length) return stored;
+      return this.terminalStageIndex(ev);
+    },
+    selectedPipelineStage(ev) {
+      const stages = this.explanationPipeline(ev);
+      return stages[this.selectedPipelineIndex(ev)] || null;
+    },
+    selectPipelineStage(ev, idx) {
+      if (!ev?.event_id) return;
+      this.selectedPipelineStages = { ...this.selectedPipelineStages, [ev.event_id]: idx };
+    },
+    stageStepTitle(stage, idx) {
+      const display = this.stageDisplay(stage?.stage);
+      return `Step ${idx + 1}: ${display.label} (${display.technical})`;
+    },
     async toggleEventDetails(ev) {
       if (!ev?.event_id) return;
       const s = new Set(this.expandedEventDetails);

@@ -86,6 +86,40 @@ window.ASF = (() => {
     if (['HITL', 'HITL_REQUESTED'].includes(v) || outcome === 'HITL_REQUESTED') return 'hitl';
     return 'neutral';
   }
+
+  function stageDisplay(stage) {
+    const technical = stage || 'Unknown stage';
+    const s = String(technical).toLowerCase();
+    let label = 'Controllo ASF';
+    let shortTech = technical;
+    if (s.includes('output guard')) {
+      label = 'Controllo output';
+      shortTech = 'Output guard';
+    } else if (s.includes('stage 3') || s.includes('onnx') || s.includes('llm')) {
+      label = 'Revisione AI approfondita';
+      shortTech = s.includes('onnx') ? 'Stage 3 ONNX Prompt Guard' : 'Stage 3 LLM';
+    } else if ((s.includes('stage 2.5') || s.includes('2.5')) && s.includes('prompt guard')) {
+      label = 'Analisi AI secondaria';
+      shortTech = 'Stage 2.5b Prompt Guard';
+    } else if (s.includes('stage 2.5') || s.includes('deberta')) {
+      label = 'Analisi AI del contenuto';
+      shortTech = 'Stage 2.5 DeBERTa';
+    } else if (s.includes('stage 2') || s.includes('tf-idf') || s.includes('random forest')) {
+      label = 'Classificatore statistico';
+      shortTech = 'Stage 2 TF-IDF + Random Forest';
+    } else if (s.includes('stage 1') || s.includes('regex')) {
+      label = 'Pattern noti';
+      shortTech = 'Stage 1 regex';
+    } else if (s.includes('l1.5') || s.includes('fast-path') || s.includes('heuristic')) {
+      label = 'Controllo rapido (regole)';
+      shortTech = 'L1.5 fast-path';
+    } else if (s.includes('policy') || s.includes('governance')) {
+      label = 'Controllo policy';
+      shortTech = technical;
+    }
+    return { label, technical, shortTech };
+  }
+
   const methods = {
     fetchJson,
     async loadProvenance() {
@@ -99,6 +133,10 @@ window.ASF = (() => {
     percent(v) { return `${Math.round((v || 0) * 100)}%`; },
     fmtLatency(ms) { return (!ms || ms === 0) ? '< 1' : String(Math.round(ms)); },
     parseUtcDate,
+    stageDisplay,
+    stageLabel(stage) { return stageDisplay(stage).label; },
+    stageTechnical(stage) { return stageDisplay(stage).technical; },
+    stageShortTech(stage) { return stageDisplay(stage).shortTech; },
     formatDuration(ms) {
       ms = Number(ms) || 0;
       if (ms < 1000) return `${Math.round(ms)}ms`;
@@ -177,5 +215,5 @@ window.ASF = (() => {
       return '#64748b';
     },
   };
-  return { shell, loadSection, fetchJson, methods };
+  return { shell, loadSection, fetchJson, methods, stageDisplay };
 })();

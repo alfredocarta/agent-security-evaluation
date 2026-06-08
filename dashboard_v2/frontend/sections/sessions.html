@@ -92,7 +92,7 @@ are not captured — ASF operates at the tool call boundary.
 <span class="mono" style="font-size:12px;color:var(--text-muted);">{{ timeOnly(ev.timestamp) }}</span>
 <span style="font-weight:600;font-size:13px;">{{ ev.tool_name || ev.action }}</span>
 <span :class="verdictBadgeClass(ev)">{{ ev.verdict || ev.outcome }}</span>
-<span :class="stageBadgeClass(ev.stage)">{{ ev.stage }}</span>
+<span :class="stageBadgeClass(ev.stage)" :title="stageTechnical(ev.stage)">{{ stageLabel(ev.stage) }}</span>
 <span v-if="ev.latency_ms != null" class="mono" style="font-size:12px;color:var(--text-muted);">{{ formatDuration(ev.latency_ms) }}</span>
 <button v-if="isTerminalEvent(ev)" :class="eventDetailsButtonClass(ev)" style="margin-left:auto;" @click.stop="toggleEventDetails(ev)">
 <svg class="chevron" :class="{ open: expandedEventDetails.has(ev.event_id) }" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -152,23 +152,33 @@ class="c-accent" style="cursor:pointer;font-size:12px;margin-left:4px;"
 </div>
 <div v-if="loadingEventDetails.has(ev.event_id) && !explanationForEvent(ev)" style="font-size:13px;color:var(--text-muted);">Loading explanation…</div>
 <div v-else class="pipeline-timeline">
-<div v-for="(stageEv, idx) in explanationPipeline(ev)" :key="ev.event_id + '-stage-' + idx" class="pipeline-stage" :class="stageToneClass(stageEv)">
-<div class="pipeline-node"></div>
-<div class="pipeline-card">
+<div class="pipeline-stepper" role="tablist" aria-label="Decision pipeline stages">
+<button v-for="(stageEv, idx) in explanationPipeline(ev)" :key="ev.event_id + '-step-' + idx" type="button" class="pipeline-step" :class="[stageToneClass(stageEv), { active: selectedPipelineIndex(ev) === idx }]" :title="stageStepTitle(stageEv, idx)" @click.stop="selectPipelineStage(ev, idx)">
+<span class="pipeline-step-index">{{ idx + 1 }}</span>
+<span class="pipeline-step-text">
+<span class="pipeline-step-label">{{ stageLabel(stageEv.stage) }}</span>
+<span class="pipeline-step-tech">{{ stageShortTech(stageEv.stage) }}</span>
+</span>
+<span v-if="stageEv.terminal" class="pipeline-step-final">final</span>
+</button>
+</div>
+<div v-if="selectedPipelineStage(ev)" class="pipeline-card pipeline-detail-card" :class="stageToneClass(selectedPipelineStage(ev))">
 <div class="pipeline-card-hdr">
+<div class="pipeline-detail-title">
 <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
-<span :class="stageBadgeClass(stageEv.stage)">{{ stageEv.stage || 'Unknown stage' }}</span>
-<span :class="verdictBadgeClass(stageEv)">{{ stageEv.verdict || stageEv.outcome || '—' }}</span>
-<span v-if="stageEv.terminal" class="badge badge-neutral">final</span>
+<span class="pipeline-detail-name">{{ stageLabel(selectedPipelineStage(ev).stage) }}</span>
+<span :class="verdictBadgeClass(selectedPipelineStage(ev))">{{ selectedPipelineStage(ev).verdict || selectedPipelineStage(ev).outcome || 'no verdict' }}</span>
+<span v-if="selectedPipelineStage(ev).terminal" class="badge badge-neutral">final</span>
 </div>
-<div class="pipeline-score">{{ stageConfidenceLabel(stageEv) }}</div>
+<div class="pipeline-detail-tech" :title="stageTechnical(selectedPipelineStage(ev).stage)">Technical: {{ stageTechnical(selectedPipelineStage(ev).stage) }}</div>
 </div>
-<div class="pipeline-reason">{{ stageEv.reason || 'No reason recorded for this stage.' }}</div>
+<div class="pipeline-score">{{ stageConfidenceLabel(selectedPipelineStage(ev)) }}</div>
+</div>
+<div class="pipeline-reason">{{ selectedPipelineStage(ev).reason || 'No reason recorded for this stage.' }}</div>
 <div class="pipeline-meta">
-<span v-if="stageEv.timestamp">{{ timeOnly(stageEv.timestamp) }}</span>
-<span v-if="stageEv.latency_ms != null">{{ formatDuration(stageEv.latency_ms) }}</span>
-<span>{{ stageEv.outcome || 'no outcome' }}</span>
-</div>
+<span v-if="selectedPipelineStage(ev).timestamp">{{ timeOnly(selectedPipelineStage(ev).timestamp) }}</span>
+<span v-if="selectedPipelineStage(ev).latency_ms != null">{{ formatDuration(selectedPipelineStage(ev).latency_ms) }}</span>
+<span>{{ selectedPipelineStage(ev).outcome || 'no outcome' }}</span>
 </div>
 </div>
 </div>
