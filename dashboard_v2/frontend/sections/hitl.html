@@ -48,8 +48,7 @@ Pending review
 </td>
 <td class="r">
 <div class="hitl-actions">
-<button class="hitl-btn hitl-btn-approve" :disabled="hitlDeciding[ev.event_id]" @click="openHitlModal(ev, 'approve')">Allow</button>
-<button class="hitl-btn hitl-btn-reject" :disabled="hitlDeciding[ev.event_id]" @click="openHitlModal(ev, 'reject')">Block</button>
+<button class="hitl-btn hitl-btn-review" :disabled="hitlDeciding[ev.event_id]" @click="openHitlModal(ev)">Rivedi</button>
 </div>
 </td>
 </tr>

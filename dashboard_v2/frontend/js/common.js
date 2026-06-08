@@ -120,6 +120,15 @@ window.ASF = (() => {
     return { label, technical, shortTech };
   }
 
+  function meaningfulPipeline(pipeline) {
+    const full = Array.isArray(pipeline) ? pipeline : [];
+    const meaningful = full.filter(s => {
+      const outcome = String(s?.outcome || '').toUpperCase();
+      return outcome !== 'INTERCEPTOR_START' && !outcome.endsWith('_START');
+    });
+    return meaningful.length ? meaningful : full;
+  }
+
   const methods = {
     fetchJson,
     async loadProvenance() {
@@ -134,6 +143,7 @@ window.ASF = (() => {
     fmtLatency(ms) { return (!ms || ms === 0) ? '< 1' : String(Math.round(ms)); },
     parseUtcDate,
     stageDisplay,
+    meaningfulPipeline,
     stageLabel(stage) { return stageDisplay(stage).label; },
     stageTechnical(stage) { return stageDisplay(stage).technical; },
     stageShortTech(stage) { return stageDisplay(stage).shortTech; },
@@ -215,5 +225,5 @@ window.ASF = (() => {
       return '#64748b';
     },
   };
-  return { shell, loadSection, fetchJson, methods, stageDisplay };
+  return { shell, loadSection, fetchJson, methods, stageDisplay, meaningfulPipeline };
 })();
