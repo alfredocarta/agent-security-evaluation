@@ -4,49 +4,49 @@ const { createApp } = Vue;
   const modal = `<div v-if="hitlModal" class="modal-backdrop" @click.self="closeHitlModal">
   <div class="modal-card hitl-modal-card" role="dialog" aria-modal="true" aria-labelledby="hitl-modal-title">
     <div class="modal-hdr">
-      <div id="hitl-modal-title" class="modal-title"><span>Rivedi richiesta HITL</span><span class="badge badge-neutral">Art. 14</span></div>
-      <button class="hitl-btn" @click="closeHitlModal" :disabled="hitlDeciding[hitlModal.event.event_id]">Chiudi</button>
+      <div id="hitl-modal-title" class="modal-title"><span>Review HITL request</span><span class="badge badge-neutral">Art. 14</span></div>
+      <button class="hitl-btn" @click="closeHitlModal" :disabled="hitlDeciding[hitlModal.event.event_id]">Close</button>
     </div>
     <div class="modal-body hitl-modal-body">
-      <div class="modal-copy">Rivedi il contesto ASF completo prima di scegliere Consenti o Blocca. La decisione verrà scritta nel registro di audit append-only e rimuoverà la richiesta dalla coda in attesa.</div>
-      <div v-if="hitlExplanationLoading[hitlModal.event.event_id]" class="hitl-modal-loading">Caricamento spiegazione...</div>
-      <div v-if="hitlExplanationErrors[hitlModal.event.event_id]" class="hitl-modal-warning">Spiegazione non disponibile. Viene mostrato l'evento HITL di base per consentire la revisione.</div>
+      <div class="modal-copy">Review the full ASF context before choosing Allow or Block. The decision will be written to the append-only audit trail and remove the request from the pending queue.</div>
+      <div v-if="hitlExplanationLoading[hitlModal.event.event_id]" class="hitl-modal-loading">Loading explanation...</div>
+      <div v-if="hitlExplanationErrors[hitlModal.event.event_id]" class="hitl-modal-warning">Explanation unavailable. Showing the base HITL event so the review can continue.</div>
 
       <div class="decision-context">
-        <div class="decision-context-title">Contesto della decisione</div>
+        <div class="decision-context-title">Decision context</div>
         <div class="decision-context-grid">
-          <div class="decision-context-meta"><span>Agente</span><b>{{ hitlExplanation().agent_id || hitlModal.event.agent_id || 'non registrato' }}</b></div>
-          <div class="decision-context-meta"><span>Modello</span><b>{{ hitlExplanation().agent_model || hitlModal.event.agent_model || 'non registrato' }}</b></div>
-          <div class="decision-context-meta"><span>Strumento</span><b>{{ hitlExplanation().tool_name || hitlModal.event.tool_name || hitlModal.event.action || 'non registrato' }}</b></div>
-          <div class="decision-context-meta"><span>Modello di sicurezza</span><b>{{ hitlExplanation().security_model || hitlModal.event.security_model || 'non registrato' }}</b></div>
+          <div class="decision-context-meta"><span>Agent</span><b>{{ hitlExplanation().agent_id || hitlModal.event.agent_id || 'not recorded' }}</b></div>
+          <div class="decision-context-meta"><span>Model</span><b>{{ hitlExplanation().agent_model || hitlModal.event.agent_model || 'not recorded' }}</b></div>
+          <div class="decision-context-meta"><span>Tool</span><b>{{ hitlExplanation().tool_name || hitlModal.event.tool_name || hitlModal.event.action || 'not recorded' }}</b></div>
+          <div class="decision-context-meta"><span>Security model</span><b>{{ hitlExplanation().security_model || hitlModal.event.security_model || 'not recorded' }}</b></div>
         </div>
-        <div class="event-explanation-reason">{{ hitlExplanation().final_reason || hitlModal.event.reason || 'Nessun motivo registrato.' }}</div>
+        <div class="event-explanation-reason">{{ hitlExplanation().final_reason || hitlModal.event.reason || 'No reason recorded.' }}</div>
       </div>
 
       <div v-if="hitlFlaggingStage()" class="pipeline-card pipeline-detail-card" :class="stageToneClass(hitlFlaggingStage())" style="margin-bottom:14px;">
         <div class="pipeline-card-hdr">
           <div class="pipeline-detail-title">
             <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
-              <span class="pipeline-detail-name">Stadio che ha richiesto la revisione: {{ stageLabel(hitlFlaggingStage().stage) }}</span>
+              <span class="pipeline-detail-name">Stage that requested review: {{ stageLabel(hitlFlaggingStage().stage) }}</span>
               <span :class="verdictBadgeClass(hitlFlaggingStage())">{{ hitlFlaggingStage().verdict || hitlFlaggingStage().outcome || 'HITL' }}</span>
             </div>
-            <div class="pipeline-detail-tech" :title="stageTechnical(hitlFlaggingStage().stage)">Tecnico: {{ stageTechnical(hitlFlaggingStage().stage) }}</div>
+            <div class="pipeline-detail-tech" :title="stageTechnical(hitlFlaggingStage().stage)">Technical: {{ stageTechnical(hitlFlaggingStage().stage) }}</div>
           </div>
           <div class="pipeline-score">{{ stageConfidenceLabel(hitlFlaggingStage()) }}</div>
         </div>
-        <div class="pipeline-reason">{{ hitlFlaggingStage().reason || hitlExplanation().final_reason || hitlModal.event.reason || 'Nessun motivo registrato per questo stadio.' }}</div>
+        <div class="pipeline-reason">{{ hitlFlaggingStage().reason || hitlExplanation().final_reason || hitlModal.event.reason || 'No reason recorded for this stage.' }}</div>
       </div>
 
       <div class="pipeline-timeline" style="margin-bottom:14px;">
-        <div class="decision-context-title">Percorso decisionale</div>
-        <div class="pipeline-stepper" role="tablist" aria-label="Stadi della pipeline decisionale">
+        <div class="decision-context-title">Decision path</div>
+        <div class="pipeline-stepper" role="tablist" aria-label="Decision pipeline stages">
           <button v-for="(stageEv, idx) in hitlPipeline()" :key="hitlModal.event.event_id + '-hitl-step-' + idx" type="button" class="pipeline-step" :class="[stageToneClass(stageEv), { active: hitlModal.selectedPipelineIndex === idx }]" :title="stageStepTitle(stageEv, idx)" @click.stop="selectHitlPipelineStage(idx)">
             <span class="pipeline-step-index">{{ idx + 1 }}</span>
             <span class="pipeline-step-text">
               <span class="pipeline-step-label">{{ stageLabel(stageEv.stage) }}</span>
               <span class="pipeline-step-tech">{{ stageShortTech(stageEv.stage) }}</span>
             </span>
-            <span v-if="stageEv.terminal" class="pipeline-step-final">finale</span>
+            <span v-if="stageEv.terminal" class="pipeline-step-final">final</span>
           </button>
         </div>
         <div v-if="hitlSelectedPipelineStage()" class="pipeline-card pipeline-detail-card" :class="stageToneClass(hitlSelectedPipelineStage())">
@@ -54,48 +54,48 @@ const { createApp } = Vue;
             <div class="pipeline-detail-title">
               <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
                 <span class="pipeline-detail-name">{{ stageLabel(hitlSelectedPipelineStage().stage) }}</span>
-                <span :class="verdictBadgeClass(hitlSelectedPipelineStage())">{{ hitlSelectedPipelineStage().verdict || hitlSelectedPipelineStage().outcome || 'nessun verdetto' }}</span>
-                <span v-if="hitlSelectedPipelineStage().terminal" class="badge badge-neutral">finale</span>
+                <span :class="verdictBadgeClass(hitlSelectedPipelineStage())">{{ hitlSelectedPipelineStage().verdict || hitlSelectedPipelineStage().outcome || 'no verdict' }}</span>
+                <span v-if="hitlSelectedPipelineStage().terminal" class="badge badge-neutral">final</span>
               </div>
-              <div class="pipeline-detail-tech" :title="stageTechnical(hitlSelectedPipelineStage().stage)">Tecnico: {{ stageTechnical(hitlSelectedPipelineStage().stage) }}</div>
+              <div class="pipeline-detail-tech" :title="stageTechnical(hitlSelectedPipelineStage().stage)">Technical: {{ stageTechnical(hitlSelectedPipelineStage().stage) }}</div>
             </div>
             <div class="pipeline-score">{{ stageConfidenceLabel(hitlSelectedPipelineStage()) }}</div>
           </div>
-          <div class="pipeline-reason">{{ hitlSelectedPipelineStage().reason || 'Nessun motivo registrato per questo stadio.' }}</div>
+          <div class="pipeline-reason">{{ hitlSelectedPipelineStage().reason || 'No reason recorded for this stage.' }}</div>
           <div class="pipeline-meta">
             <span v-if="hitlSelectedPipelineStage().timestamp">{{ timeOnly(hitlSelectedPipelineStage().timestamp) }}</span>
             <span v-if="hitlSelectedPipelineStage().latency_ms != null">{{ formatDuration(hitlSelectedPipelineStage().latency_ms) }}</span>
-            <span>{{ hitlSelectedPipelineStage().outcome || 'nessun outcome' }}</span>
+            <span>{{ hitlSelectedPipelineStage().outcome || 'no outcome' }}</span>
           </div>
         </div>
       </div>
 
       <div class="decision-context">
-        <div class="decision-context-title">Input/Output della chiamata</div>
+        <div class="decision-context-title">Tool call I/O</div>
         <div class="decision-io">
-          <div class="decision-io-head"><span>Input</span><span v-if="hitlExplanation().input_troncato" class="badge badge-neutral">troncato</span></div>
-          <pre class="decision-io-block" :class="{ 'decision-io-empty': !hitlExplanation().tool_input }">{{ hitlExplanation().tool_input || 'input non registrato' }}</pre>
+          <div class="decision-io-head"><span>Input</span><span v-if="hitlExplanation().input_truncated" class="badge badge-neutral">truncated</span></div>
+          <pre class="decision-io-block" :class="{ 'decision-io-empty': !hitlExplanation().tool_input }">{{ hitlExplanation().tool_input || 'input not recorded' }}</pre>
         </div>
         <div class="decision-io">
-          <div class="decision-io-head"><span>Output</span><span v-if="hitlExplanation().output_troncato" class="badge badge-neutral">troncato</span></div>
-          <pre class="decision-io-block" :class="{ 'decision-io-empty': !hitlExplanation().tool_output }">{{ hitlExplanation().tool_output || 'output non registrato' }}</pre>
+          <div class="decision-io-head"><span>Output</span><span v-if="hitlExplanation().output_truncated" class="badge badge-neutral">truncated</span></div>
+          <pre class="decision-io-block" :class="{ 'decision-io-empty': !hitlExplanation().tool_output }">{{ hitlExplanation().tool_output || 'output not recorded' }}</pre>
         </div>
       </div>
 
       <div class="modal-field-grid">
-        <label><span class="modal-field-label">Revisore</span><input class="modal-input" type="text" v-model="hitlModal.reviewer" placeholder="dashboard-user" autofocus /></label>
-        <label><span class="modal-field-label">Nota (facoltativa)</span><input class="modal-input" type="text" v-model="hitlModal.note" placeholder="Nota facoltativa sulla decisione" /></label>
+        <label><span class="modal-field-label">Reviewer</span><input class="modal-input" type="text" v-model="hitlModal.reviewer" placeholder="dashboard-user" autofocus /></label>
+        <label><span class="modal-field-label">Note (optional)</span><input class="modal-input" type="text" v-model="hitlModal.note" placeholder="Optional decision note" /></label>
       </div>
     </div>
     <div class="modal-actions">
-      <button class="modal-btn" @click="closeHitlModal" :disabled="hitlDeciding[hitlModal.event.event_id]">Annulla</button>
-      <button class="modal-btn modal-btn-success" :disabled="hitlDeciding[hitlModal.event.event_id]" @click="confirmHitlDecision('approve')">Consenti</button>
-      <button class="modal-btn modal-btn-danger" :disabled="hitlDeciding[hitlModal.event.event_id]" @click="confirmHitlDecision('reject')">Blocca</button>
+      <button class="modal-btn" @click="closeHitlModal" :disabled="hitlDeciding[hitlModal.event.event_id]">Cancel</button>
+      <button class="modal-btn modal-btn-success" :disabled="hitlDeciding[hitlModal.event.event_id]" @click="confirmHitlDecision('approve')">Allow</button>
+      <button class="modal-btn modal-btn-danger" :disabled="hitlDeciding[hitlModal.event.event_id]" @click="confirmHitlDecision('reject')">Block</button>
     </div>
   </div>
 </div>`;
   createApp({
-    template: ASF.shell('hitl', 'Supervisione umana', content, modal),
+    template: ASF.shell('hitl', 'Human Oversight', content, modal),
     data: () => ({
       hitlEvents: [],
       hitlDeciding: {},
@@ -115,7 +115,7 @@ const { createApp } = Vue;
       async refresh() {
         this.hitlEvents = await this.fetchJson('/api/hitl');
         this.loadProvenance();
-        this.lastRefresh = new Date().toLocaleTimeString('it-IT');
+        this.lastRefresh = new Date().toLocaleTimeString();
       },
       openHitlModal(ev) {
         this.hitlModal = { event: ev, reviewer: 'dashboard-user', note: '', selectedPipelineIndex: 0 };
@@ -157,18 +157,18 @@ const { createApp } = Vue;
           tool_name: ev.tool_name || ev.action,
           final_verdict: ev.verdict,
           final_outcome: ev.outcome,
-          final_reason: ev.reason || 'Nessun motivo registrato.',
+          final_reason: ev.reason || 'No reason recorded.',
           security_model: ev.security_model,
           tool_input: ev.tool_input || '',
           tool_output: ev.tool_output || '',
-          input_troncato: ev.input_troncato || false,
-          output_troncato: ev.output_troncato || false,
+          input_truncated: ev.input_truncated || false,
+          output_truncated: ev.output_truncated || false,
           pipeline: [{
-            stage: ev.stage || 'Stadio sconosciuto',
+            stage: ev.stage || 'Unknown stage',
             outcome: ev.outcome || 'HITL_REQUESTED',
             verdict: ev.verdict || 'HITL',
             confidence: ev.confidence,
-            reason: ev.reason || 'Nessun motivo registrato.',
+            reason: ev.reason || 'No reason recorded.',
             timestamp: ev.timestamp,
             latency_ms: ev.latency_ms,
             terminal: true,
@@ -211,7 +211,7 @@ const { createApp } = Vue;
       },
       stageStepTitle(stage, idx) {
         const display = this.stageDisplay(stage?.stage);
-        return `Passo ${idx + 1}: ${display.label} (${display.technical})`;
+        return `Step ${idx + 1}: ${display.label} (${display.technical})`;
       },
       stageToneClass(stage) {
         const verdict = String(stage?.verdict || '').toUpperCase();
@@ -225,7 +225,7 @@ const { createApp } = Vue;
         const v = stage?.confidence;
         if (v == null || Number.isNaN(Number(v))) {
           const name = String(stage?.stage || '').toLowerCase();
-          if (name.includes('l1.5') || name.includes('policy') || name.includes('regex')) return 'basato su regole';
+          if (name.includes('l1.5') || name.includes('policy') || name.includes('regex')) return 'rule-based';
           return '-';
         }
         const n = Number(v);

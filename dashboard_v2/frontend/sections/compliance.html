@@ -1,19 +1,19 @@
 <section id="compliance" class="grid grid-cols-1 gap-4">
 <div class="card lg:col-span-2" style="padding:20px;">
 <div class="section-hdr">
-<span class="section-title">EU AI Act - Mappatura evidenze</span>
-<span class="section-sub">Clicca un articolo per vedere gli eventi di audit correlati</span>
+<span class="section-title">EU AI Act - Evidence Mapping</span>
+<span class="section-sub">Click an article to see the correlated audit events</span>
 </div>
 <div class="disclaimer">
-Questa vista mappa gli eventi di audit ASF registrati agli articoli dell'EU AI Act come evidenza di supporto. Non è una valutazione di conformità e non afferma conformità legale. Ogni stato riflette solo ciò che il registro di audit sottostante può dimostrare, e ogni affermazione rimanda agli eventi grezzi che la supportano.
+This view maps recorded ASF audit events to EU AI Act articles as supporting evidence. It is not a conformity assessment and does not assert legal compliance. Each state reflects only what the underlying audit trail can demonstrate, and every claim links to the raw events behind it.
 </div>
 <table class="data-table">
 <thead>
 <tr>
-<th style="width:110px;">Articolo</th>
-<th>Controllo</th>
-<th class="r" style="width:90px;">Evidenza</th>
-<th class="r" style="width:170px;">Stato</th>
+<th style="width:110px;">Article</th>
+<th>Control</th>
+<th class="r" style="width:90px;">Evidence</th>
+<th class="r" style="width:170px;">State</th>
 </tr>
 </thead>
 <tbody>
@@ -28,8 +28,8 @@ Questa vista mappa gli eventi di audit ASF registrati agli articoli dell'EU AI A
 </span>
 </td>
 <td class="control-cell">
-<div class="control-title">{{ complianceControl(item.control) }}</div>
-<div v-if="item.description" class="control-description">{{ complianceText(item.description) }}</div>
+<div class="control-title">{{ item.control }}</div>
+<div v-if="item.description" class="control-description">{{ item.description }}</div>
 </td>
 <td class="r article-count">{{ item.event_count.toLocaleString() }}</td>
 <td class="r">
@@ -42,10 +42,10 @@ Questa vista mappa gli eventi di audit ASF registrati agli articoli dell'EU AI A
 <td colspan="4" style="padding:0;">
 <div class="drill-content" style="margin:2px 0 4px 14px;padding:10px 14px 10px 16px;border-left:2px solid var(--accent);background:var(--bg-stripe);">
 <div v-if="item.note" style="font-size:12px;color:var(--text-secondary);line-height:1.55;margin-bottom:10px;padding-bottom:9px;border-bottom:1px solid var(--border-subtle);">
-<span style="color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:10px;">Ambito e limiti</span><br>{{ complianceText(item.note) }}
+<span style="color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:10px;">Scope &amp; limitations</span><br>{{ item.note }}
 </div>
-<div v-if="loadingArticle" style="font-size:13px;color:var(--text-muted);">Caricamento eventi…</div>
-<div v-else-if="articleEvents.length === 0" style="font-size:13px;color:var(--text-muted);">Nessun evento trovato.</div>
+<div v-if="loadingArticle" style="font-size:13px;color:var(--text-muted);">Loading events…</div>
+<div v-else-if="articleEvents.length === 0" style="font-size:13px;color:var(--text-muted);">No events found.</div>
 <div v-for="ev in articleEvents" :key="ev.event_id" class="ev-row" :class="evRowClass(ev)" style="margin-bottom:4px;">
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
 <span class="mono" style="font-size:12px;color:var(--text-muted);">{{ timeOnly(ev.timestamp) }}</span>
@@ -58,9 +58,9 @@ Questa vista mappa gli eventi di audit ASF registrati agli articoli dell'EU AI A
 </div>
 <div v-if="!loadingArticle && articleEvents.length > 0"
 style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;font-size:12px;color:var(--text-muted);">
-<span>Mostrati {{ articleEvents.length.toLocaleString('it-IT') }} eventi · cache nel browser</span>
+<span>Showing {{ articleEvents.length.toLocaleString() }} events · cached in browser</span>
 <button v-if="articleHasMore[expandedArticle]" class="hitl-btn" :disabled="articleLoadingMore" @click="loadMoreArticleEvents">
-{{ articleLoadingMore ? 'Caricamento…' : 'Carica prossimi 20' }}
+{{ articleLoadingMore ? 'Loading…' : 'Load next 20' }}
 </button>
 </div>
 </div>

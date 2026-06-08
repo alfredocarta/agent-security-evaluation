@@ -2,8 +2,8 @@
   <div class="card" style="padding:20px;">
     <div class="section-hdr">
       <div>
-        <div class="section-title">Panoramica</div>
-        <div class="section-sub" style="margin-top:2px;">Stato conformità in tempo reale</div>
+        <div class="section-title">Overview</div>
+        <div class="section-sub" style="margin-top:2px;">Live compliance posture</div>
       </div>
       <div style="display:flex;gap:6px;">
         <button class="hitl-btn" :style="chartsWindow==='24h' ? 'border-color:var(--accent);color:var(--accent)' : ''" @click="setChartsWindow('24h')">24h</button>
@@ -17,74 +17,74 @@
         <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">{{ posture.detail }}</div>
       </div>
       <div class="posture-meta">
-        <span>Origine <b>{{ dbSource || 'sconosciuto' }}</b></span>
-        <span>Ultimo evento <b>{{ dataAsOf ? freshness(dataAsOf).label : 'sconosciuto' }}</b></span>
-        <span>Revisioni in attesa <b :style="metrics.hitl_count ? 'color:var(--hitl)' : ''">{{ metrics.hitl_count ?? 0 }}</b></span>
+        <span>Source <b>{{ dbSource || 'unknown' }}</b></span>
+        <span>Latest event <b>{{ dataAsOf ? freshness(dataAsOf).label : 'unknown' }}</b></span>
+        <span>Pending review <b :style="metrics.hitl_count ? 'color:var(--hitl)' : ''">{{ metrics.hitl_count ?? 0 }}</b></span>
       </div>
     </div>
 
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" style="margin-bottom:14px;">
       <div class="kpi-card">
-        <div class="kpi-label">Chiamate strumento ispezionate (24h)</div>
+        <div class="kpi-label">Tool Calls Inspected (24h)</div>
         <div class="kpi-value">{{ fmtNum(metrics.tool_calls_last_24h) }}</div>
-        <div class="kpi-sub">{{ fmtNum(metrics.total_tool_calls) }} ispezionate nel contenuto (escl. governance/RBAC)</div>
+        <div class="kpi-sub">{{ fmtNum(metrics.total_tool_calls) }} content-inspected (excl. governance/RBAC)</div>
         <div v-if="metrics.calls_trend_pct != null" class="kpi-trend" :class="metrics.calls_trend_pct > 20 ? 'up' : metrics.calls_trend_pct < -20 ? 'down' : 'neutral'">
-          {{ metrics.calls_trend_pct > 0 ? '↑' : '↓' }} {{ Math.abs(Math.round(metrics.calls_trend_pct)) }}% rispetto alla media giornaliera
+          {{ metrics.calls_trend_pct > 0 ? '↑' : '↓' }} {{ Math.abs(Math.round(metrics.calls_trend_pct)) }}% vs daily avg
         </div>
-        <div v-else class="kpi-trend neutral">il trend richiede dati su più giorni</div>
+        <div v-else class="kpi-trend neutral">trend needs multi-day data</div>
         <chart-sparkline v-if="callsSpark.length > 1" :points="callsSpark" :width="160" :height="22" color="var(--accent)" style="margin-top:8px;"/>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Tasso di blocco</div>
+        <div class="kpi-label">Block Rate</div>
         <div class="kpi-value" :style="blockRateValueStyle">{{ percent(metrics.detection_rate) }}</div>
-        <div class="kpi-sub">su {{ fmtNum((metrics.blocked_count||0)+(metrics.allowed_count||0)+(metrics.hitl_count||0)) }} decisioni terminali</div>
-        <div class="kpi-trend neutral">include scenari di test avversariali</div>
+        <div class="kpi-sub">of {{ fmtNum((metrics.blocked_count||0)+(metrics.allowed_count||0)+(metrics.hitl_count||0)) }} terminal decisions</div>
+        <div class="kpi-trend neutral">includes adversarial test scenarios</div>
         <chart-sparkline v-if="blockSpark.length > 1" :points="blockSpark" :width="160" :height="22" color="var(--danger)" style="margin-top:8px;"/>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Distribuzione decisioni</div>
-        <div class="kpi-value" style="color:var(--danger);">{{ fmtNum(metrics.blocked_count) }}<span class="kpi-unit">bloccate</span></div>
+        <div class="kpi-label">Decision Split</div>
+        <div class="kpi-value" style="color:var(--danger);">{{ fmtNum(metrics.blocked_count) }}<span class="kpi-unit">blocked</span></div>
         <div class="kpi-ratio">
           <div class="kpi-ratio-blocked" :style="{ width: decisionWidth(metrics.blocked_count, metrics.allowed_count, metrics.hitl_count, 'blocked') }"></div>
           <div class="kpi-ratio-hitl" :style="{ width: decisionWidth(metrics.blocked_count, metrics.allowed_count, metrics.hitl_count, 'hitl') }"></div>
           <div class="kpi-ratio-allowed" :style="{ width: decisionWidth(metrics.blocked_count, metrics.allowed_count, metrics.hitl_count, 'allowed') }"></div>
         </div>
         <div class="kpi-ratio-labels">
-          <span style="color:var(--danger);">{{ fmtNum(metrics.blocked_count) }} bloccate</span>
+          <span style="color:var(--danger);">{{ fmtNum(metrics.blocked_count) }} blocked</span>
           <span style="color:var(--hitl);">{{ fmtNum(metrics.hitl_count) }} HITL</span>
-          <span style="color:var(--success);">{{ fmtNum(metrics.allowed_count) }} consentite</span>
+          <span style="color:var(--success);">{{ fmtNum(metrics.allowed_count) }} allowed</span>
         </div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Overhead di ispezione</div>
+        <div class="kpi-label">Inspection Overhead</div>
         <div class="kpi-value">
           {{ fmtLatency(metrics.avg_latency_ms) }}<span class="kpi-unit">ms</span>
         </div>
-        <div class="kpi-sub">latenza ASF media per chiamata strumento</div>
-        <div class="kpi-trend neutral">p95: {{ metrics.p95_latency_ms ? Math.round(metrics.p95_latency_ms) + 'ms' : '-' }}</div>
+        <div class="kpi-sub">average ASF latency per tool call</div>
+        <div class="kpi-trend neutral">p95: {{ metrics.p95_latency_ms ? Math.round(metrics.p95_latency_ms) + 'ms' : '—' }}</div>
       </div>
     </div>
 
     <div v-if="charts" style="display:flex;flex-direction:column;gap:14px;margin-bottom:14px;">
       <div class="chart-grid">
         <div class="chart-card">
-          <div class="chart-card-title">Imbuto degli stadi della pipeline - dove vengono prese le decisioni</div>
+          <div class="chart-card-title">Pipeline stage funnel — where decisions are made</div>
           <chart-funnel :items="charts.stage_funnel"></chart-funnel>
         </div>
         <div class="chart-card">
-          <div class="chart-card-title">Blocchi per stadio di rilevamento</div>
+          <div class="chart-card-title">Blocks by detection stage</div>
           <chart-donut :segments="blockStageSegments"></chart-donut>
         </div>
       </div>
       <div class="chart-card">
-        <div class="chart-card-title">Catalogo blocchi per agente</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Solo blocchi contenuto, esclusi i dinieghi dei gate governance e RBAC.</div>
+        <div class="chart-card-title">Block catalog by agent</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Content blocks only, excluding governance and RBAC gate denials.</div>
         <chart-block-catalog :items="charts.block_catalog || []"></chart-block-catalog>
       </div>
     </div>
 
     <div class="disclaimer">
-      Le metriche sono calcolate dagli eventi di audit registrati, non da un benchmark controllato. Il tasso di blocco include scenari di test avversariali progettati per essere bloccati, quindi riflette il mix di valutazione e non un tasso reale di falsi positivi o di attacchi.
+      Figures are computed from recorded audit events, not a controlled benchmark. Block rate includes adversarial test scenarios that are designed to be blocked, so it reflects the evaluation mix and is not a real-world false-positive or attack rate.
     </div>
   </div>
 </section>

@@ -11,16 +11,16 @@ window.ASFCharts = (() => {
     other: 'var(--unknown)',
   };
   const REASON_LABELS = {
-    governance: 'Governance (gate agente)',
-    rbac: 'RBAC / permessi',
-    content_detection: 'Rilevamento contenuto',
+    governance: 'Governance (agent gate)',
+    rbac: 'RBAC / permissions',
+    content_detection: 'Content detection',
     output_guard: 'Output guard',
-    other: 'Altro',
+    other: 'Other',
   };
 
   // Distinct color per pipeline stage, for the "blocks by detection stage" donut.
   function stageDisplay(stage) {
-    return window.ASF && ASF.stageDisplay ? ASF.stageDisplay(stage) : { label: stage || 'Stadio sconosciuto', technical: stage || 'Stadio sconosciuto', shortTech: stage || 'Stadio sconosciuto' };
+    return window.ASF && ASF.stageDisplay ? ASF.stageDisplay(stage) : { label: stage || 'Unknown stage', technical: stage || 'Unknown stage', shortTech: stage || 'Unknown stage' };
   }
 
   function stageColor(stage) {
@@ -70,12 +70,12 @@ window.ASFCharts = (() => {
       stageTechnical(stage) { return stageDisplay(stage).technical; },
     },
     template: `<div class="cf">
-      <div v-if="!items.length" class="chart-empty">Nessuna decisione pipeline nella finestra</div>
+      <div v-if="!items.length" class="chart-empty">No pipeline decisions in window</div>
       <div v-for="it in items" :key="it.stage" class="cf-row">
         <div class="cf-label" :title="stageTechnical(it.stage)">{{ stageLabel(it.stage) }}</div>
         <div class="cf-track">
           <div class="cf-bar" :style="{ width: barWidth(it.total) }"
-               :title="stageTechnical(it.stage) + ': ' + it.total + ' (bloccate ' + it.blocked + ' / consentite ' + it.allowed + ' / hitl ' + it.hitl + ')'">
+               :title="stageTechnical(it.stage) + ': ' + it.total + ' (blocked ' + it.blocked + ' / allowed ' + it.allowed + ' / hitl ' + it.hitl + ')'">
             <div class="cf-seg cf-block" :style="{ width: seg(it.blocked, it.total) }"></div>
             <div class="cf-seg cf-hitl" :style="{ width: seg(it.hitl, it.total) }"></div>
             <div class="cf-seg cf-allow" :style="{ width: seg(it.allowed, it.total) }"></div>
@@ -105,7 +105,7 @@ window.ASFCharts = (() => {
       },
     },
     template: `<div class="cd">
-      <div v-if="!total" class="chart-empty">Nessun blocco nella finestra</div>
+      <div v-if="!total" class="chart-empty">No blocks in window</div>
       <template v-else>
         <svg :width="size" :height="size" class="cd-svg">
           <g :transform="'translate(' + size / 2 + ',' + size / 2 + ') rotate(-90)'">
@@ -132,7 +132,7 @@ window.ASFCharts = (() => {
     computed: { maxC() { return Math.max(1, ...this.buckets.map(b => b.count || 0)); } },
     methods: { h(c) { return `${(100 * (c || 0) / this.maxC).toFixed(1)}%`; } },
     template: `<div class="chh">
-      <div v-if="!stats || !stats.sample_count" class="chart-empty">Nessun campione di latenza nella finestra</div>
+      <div v-if="!stats || !stats.sample_count" class="chart-empty">No latency samples in window</div>
       <template v-else>
         <div class="chh-bars">
           <div v-for="b in buckets" :key="b.label" class="chh-col">
@@ -153,11 +153,11 @@ window.ASFCharts = (() => {
       pct(v) { return `${Math.round((v || 0) * 100)}%`; },
     },
     template: `<div class="hb">
-      <div v-if="!items.length" class="chart-empty">Nessuna attività agente nella finestra</div>
+      <div v-if="!items.length" class="chart-empty">No agent activity in window</div>
       <div v-for="it in items" :key="it.agent_id" class="hb-row">
         <div class="hb-label" :title="it.agent_id">{{ it.agent_id }}</div>
         <div class="hb-track"><div class="hb-bar" :style="{ width: w(it.total) }"></div></div>
-        <div class="hb-meta">{{ it.total }} · <span :style="{ color: it.block_rate > 0.5 ? 'var(--danger)' : 'var(--text-muted)' }">{{ pct(it.block_rate) }} blocchi</span></div>
+        <div class="hb-meta">{{ it.total }} · <span :style="{ color: it.block_rate > 0.5 ? 'var(--danger)' : 'var(--text-muted)' }">{{ pct(it.block_rate) }} blk</span></div>
       </div>
     </div>`,
   };
@@ -167,10 +167,10 @@ window.ASFCharts = (() => {
     computed: { maxC() { return Math.max(1, ...this.points.map(p => (p.blocked || 0) + (p.allowed || 0) + (p.hitl || 0))); } },
     methods: {
       seg(v) { return `${(100 * (v || 0) / this.maxC).toFixed(1)}%`; },
-      tip(p) { return `${p.bucket}  bloccate ${p.blocked} / consentite ${p.allowed} / hitl ${p.hitl}`; },
+      tip(p) { return `${p.bucket}  blocked ${p.blocked} / allowed ${p.allowed} / hitl ${p.hitl}`; },
     },
     template: `<div class="tl">
-      <div v-if="!points.length" class="chart-empty">Nessuna attività nella finestra</div>
+      <div v-if="!points.length" class="chart-empty">No activity in window</div>
       <div v-else class="tl-bars">
         <div v-for="p in points" :key="p.bucket" class="tl-col" :title="tip(p)">
           <div class="tl-stack">
@@ -189,7 +189,7 @@ window.ASFCharts = (() => {
       agents() {
         const out = new Map();
         for (const row of this.items || []) {
-          const agent = row.agent_id || 'agente-sconosciuto';
+          const agent = row.agent_id || 'unknown-agent';
           if (!out.has(agent)) out.set(agent, { agent_id: agent, total: 0, mechanisms: [] });
           const entry = out.get(agent);
           entry.total += row.count || 0;
@@ -211,11 +211,11 @@ window.ASFCharts = (() => {
       },
     },
     template: `<div class="bc">
-      <div v-if="!items.length" class="chart-empty">Nessun blocco contenuto nella finestra</div>
+      <div v-if="!items.length" class="chart-empty">No content blocks in window</div>
       <div v-for="agent in agents" :key="agent.agent_id" class="bc-row">
         <div class="bc-head">
           <span class="bc-agent" :title="agent.agent_id">{{ agent.agent_id }}</span>
-          <span class="bc-total">{{ agent.total }} blocchi</span>
+          <span class="bc-total">{{ agent.total }} blocks</span>
         </div>
         <div class="bc-track" :style="{ width: agentWidth(agent.total) }">
           <div v-for="row in agent.mechanisms" :key="agent.agent_id + row.mechanism"

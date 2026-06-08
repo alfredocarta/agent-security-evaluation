@@ -2,28 +2,28 @@
   <div class="card" style="padding:20px;">
     <div class="section-hdr">
       <div>
-        <div class="section-title">Report giornaliero</div>
-        <div class="section-sub" style="margin-top:2px;">Riepilogo per {{ dailyReport.date || reportDate || 'ieri' }}</div>
+        <div class="section-title">Daily Report</div>
+        <div class="section-sub" style="margin-top:2px;">Summary for {{ dailyReport.date || reportDate || 'yesterday' }}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
         <input type="date" v-model="reportDate" @change="loadDailyReport(reportDate)"
                style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;color:var(--text-primary);outline:none;">
-        <button class="hitl-btn" :disabled="reportLoading" @click="loadDailyReport(reportDate)">{{ reportLoading ? 'Caricamento…' : 'Carica' }}</button>
+        <button class="hitl-btn" :disabled="reportLoading" @click="loadDailyReport(reportDate)">{{ reportLoading ? 'Loading…' : 'Load' }}</button>
       </div>
     </div>
-    <div v-if="reportLoading && !dailyReport.date" style="font-size:13px;color:var(--text-muted);">Caricamento report giornaliero…</div>
+    <div v-if="reportLoading && !dailyReport.date" style="font-size:13px;color:var(--text-muted);">Loading daily report…</div>
     <div v-else>
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" style="margin-bottom:14px;">
-        <div class="kpi-card"><div class="kpi-label">Chiamate totali</div><div class="kpi-value">{{ fmtNum(dailyReport.total_calls) }}</div><div class="kpi-sub">chiamate strumento ispezionate quel giorno</div></div>
-        <div class="kpi-card"><div class="kpi-label">Bloccate</div><div class="kpi-value" style="color:var(--danger);">{{ fmtNum(dailyReport.blocked) }}</div><div class="kpi-sub">stadio principale: {{ dailyReport.top_blocking_stage || '-' }}</div></div>
-        <div class="kpi-card"><div class="kpi-label">Consentite</div><div class="kpi-value" style="color:var(--success);">{{ fmtNum(dailyReport.allowed) }}</div><div class="kpi-sub">decisioni terminali consentite</div></div>
-        <div class="kpi-card"><div class="kpi-label">HITL decise</div><div class="kpi-value" style="color:var(--warning);">{{ fmtNum(dailyReport.hitl_decided) }}</div><div class="kpi-sub">agente principale: {{ dailyReport.top_agent || '-' }}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Total Calls</div><div class="kpi-value">{{ fmtNum(dailyReport.total_calls) }}</div><div class="kpi-sub">tool calls inspected that day</div></div>
+        <div class="kpi-card"><div class="kpi-label">Blocked</div><div class="kpi-value" style="color:var(--danger);">{{ fmtNum(dailyReport.blocked) }}</div><div class="kpi-sub">top stage: {{ dailyReport.top_blocking_stage || '—' }}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Allowed</div><div class="kpi-value" style="color:var(--success);">{{ fmtNum(dailyReport.allowed) }}</div><div class="kpi-sub">terminal allow decisions</div></div>
+        <div class="kpi-card"><div class="kpi-label">HITL Decided</div><div class="kpi-value" style="color:var(--warning);">{{ fmtNum(dailyReport.hitl_decided) }}</div><div class="kpi-sub">top agent: {{ dailyReport.top_agent || '—' }}</div></div>
       </div>
       <div class="card" style="padding:14px;background:var(--bg-secondary);">
-        <div class="section-hdr" style="margin-bottom:10px;padding-bottom:10px;"><span class="section-title">Sessioni bloccate</span><span class="section-sub">{{ (dailyReport.blocked_sessions || []).length }} sessioni</span></div>
-        <div v-if="!(dailyReport.blocked_sessions || []).length" style="font-size:13px;color:var(--text-muted);">Nessuna sessione bloccata per questo giorno.</div>
+        <div class="section-hdr" style="margin-bottom:10px;padding-bottom:10px;"><span class="section-title">Blocked Sessions</span><span class="section-sub">{{ (dailyReport.blocked_sessions || []).length }} sessions</span></div>
+        <div v-if="!(dailyReport.blocked_sessions || []).length" style="font-size:13px;color:var(--text-muted);">No blocked sessions for this day.</div>
         <table v-else class="data-table">
-          <thead><tr><th style="width:260px;">Sessione</th><th>Motivo</th></tr></thead>
+          <thead><tr><th style="width:260px;">Session</th><th>Reason</th></tr></thead>
           <tbody><tr v-for="item in dailyReport.blocked_sessions" :key="item.session_id" style="cursor:default;"><td class="td-mono">{{ truncate(item.session_id, 42) }}</td><td style="font-size:12px;color:var(--text-muted);">{{ truncate(item.reason, 160) }}</td></tr></tbody>
         </table>
       </div>
