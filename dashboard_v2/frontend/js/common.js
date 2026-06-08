@@ -88,6 +88,13 @@ window.ASF = (() => {
   }
   const methods = {
     fetchJson,
+    async loadProvenance() {
+      try {
+        const p = await fetchJson('/api/metrics/provenance');
+        this.dbSource = p.db_source || '';
+        this.dataAsOf = p.data_as_of || null;
+      } catch (_e) { /* keep previous provenance on transient error */ }
+    },
     fmtNum(v) { return (v ?? 0).toLocaleString(); },
     percent(v) { return `${Math.round((v || 0) * 100)}%`; },
     fmtLatency(ms) { return (!ms || ms === 0) ? '< 1' : String(Math.round(ms)); },

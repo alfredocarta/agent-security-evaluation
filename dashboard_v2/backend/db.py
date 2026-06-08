@@ -837,6 +837,59 @@ def _hermes_rows_for_event(conn: sqlite3.Connection, event_id: str) -> list[dict
     return rows or [anchor_dict]
 
 
+def _audit_chain_for_hermes_trace(conn: sqlite3.Connection, trace_row: dict[str, Any]) -> list[dict[str, Any]]:
+    """Resolve the per-stage audit_trail chain that backs a Hermes tool-call trace.
+
+    Hermes traces store one summary row per tool call with no per-stage steps. The
+    granular pipeline (INTERCEPTOR_START -> ... -> terminal) lives only in audit_trail.
+    When the trace carries an audit_hash back-link, follow it directly. Otherwise fall
+    back to matching the closest terminal audit_trail row by agent_id, ASF tool name and
+    verdict within a short time window, then walk its hash chain.
+    """
+    audit_hash = (trace_row.get("audit_hash") or "").strip()
+    if audit_hash:
+        chain = _audit_chain_for_event(conn, audit_hash)
+        if len(chain) > 1:
+            return chain
+
+    agent_id = trace_row.get("agent_id")
+    trace_ts = _parse_timestamp(str(trace_row.get("timestamp") or ""))
+    if not agent_id or trace_ts is None:
+        return []
+
+    trace_verdict = (trace_row.get("verdict") or _infer_verdict(trace_row.get("outcome") or "")).upper()
+    asf_tool = trace_row.get("asf_tool_name") or ""
+    window = timedelta(seconds=6)
+    lo = (trace_ts - window).strftime("%Y-%m-%d %H:%M:%S")
+    hi = (trace_ts + window).strftime("%Y-%m-%d %H:%M:%S.999999")
+    placeholders = ",".join("?" for _ in TERMINAL_OUTCOMES)
+    terminal_list = list(sorted(TERMINAL_OUTCOMES))
+    candidates = [dict(r) for r in conn.execute(
+        "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
+        "FROM audit_trail WHERE agent_id = ? AND outcome IN (" + placeholders + ") "
+        "AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC",
+        [agent_id] + terminal_list + [lo, hi],
+    ).fetchall()]
+
+    best: dict[str, Any] | None = None
+    best_delta: float | None = None
+    for cand in candidates:
+        if _infer_verdict(cand.get("outcome") or "") != trace_verdict:
+            continue
+        if asf_tool and (cand.get("action") or "") != asf_tool:
+            continue
+        cand_ts = _parse_timestamp(str(cand.get("timestamp") or ""))
+        if cand_ts is None:
+            continue
+        delta = abs((cand_ts - trace_ts).total_seconds())
+        if best_delta is None or delta < best_delta:
+            best, best_delta = cand, delta
+
+    if best is None:
+        return []
+    return _audit_chain_for_event(conn, best.get("hash"))
+
+
 async def get_event_explanation(event_id: str) -> EventExplanation:
     cache_key = ("event_explanation", event_id)
     cached = _cache_get(cache_key)
@@ -860,7 +913,15 @@ async def get_event_explanation(event_id: str) -> EventExplanation:
             hermes_rows = _hermes_rows_for_event(conn, event_id)
             hermes_events = [_normalize_hermes_trace(row) for row in hermes_rows]
             if hermes_events:
-                explanation = _event_explanation_from_pipeline(event_id, hermes_events)
+                # Hermes traces hold only a single summary row. Recover the full
+                # per-stage pipeline from audit_trail so the decision path shows.
+                resolved: list[AuditEvent] = []
+                for hrow in hermes_rows:
+                    chain = _audit_chain_for_hermes_trace(conn, hrow)
+                    if len(chain) > 1:
+                        resolved.extend(_normalize_event(row) for row in chain)
+                pipeline = resolved or hermes_events
+                explanation = _event_explanation_from_pipeline(event_id, pipeline)
                 return _cache_set(cache_key, explanation, ttl=300.0)
 
         audit_rows = _audit_chain_for_event(conn, event_id)
@@ -984,6 +1045,36 @@ async def get_trace_events(trace_id: str) -> list[AuditEvent]:
     return await get_session_events(trace_id.replace("trace-", "trace-"))
 
 
+def _hermes_group_covered_by_audit(
+    hgroup: dict[str, Any],
+    audit_intervals: list[tuple[str, datetime | None, datetime | None, set[str]]],
+) -> bool:
+    """True when a Hermes trace session duplicates an audit_trail session.
+
+    Every Hermes tool call is recorded both as a summary row in hermes_tool_traces and
+    as a hash-chained sequence in audit_trail, so it would otherwise show as two near
+    identical sessions. The audit_trail '-group-' session is authoritative (full per-stage
+    path), so the Hermes duplicate is dropped. Match precisely via the audit_hash back-link
+    when present, else fall back to agent + time-range overlap (covers pre-back-link rows).
+    """
+    agent = hgroup.get("agent_id")
+    hashes = hgroup.get("_audit_hashes") or set()
+    if hashes:
+        for a, _s, _e, group_hashes in audit_intervals:
+            if a == agent and hashes & group_hashes:
+                return True
+    hs, he = hgroup.get("start_ts"), hgroup.get("end_ts")
+    if hs is None or he is None:
+        return False
+    tol = timedelta(seconds=30)
+    for a, s, e, _hashes in audit_intervals:
+        if a != agent or s is None or e is None:
+            continue
+        if hs <= e + tol and s <= he + tol:
+            return True
+    return False
+
+
 async def get_sessions(
     limit: int = 20,
     offset: int = 0,
@@ -1041,12 +1132,13 @@ async def get_sessions(
 
     # Collect hermes and audit-trail sessions independently so neither source starves the other.
     hermes_summaries: list[SessionSummary] = []
+    hermes_groups: dict[str, dict[str, Any]] = {}
     if _has_hermes_trace_schema(db_path):
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
             hermes_query = (
                 "SELECT id, timestamp, agent_id, agent_type, agent_model, session_id, task_id, "
-                "trace_id, outcome, verdict, "
+                "trace_id, outcome, verdict, audit_hash, "
                 "COALESCE(tool_duration_ms, asf_latency_ms, 0) AS duration_ms "
                 "FROM hermes_tool_traces"
             )
@@ -1057,7 +1149,6 @@ async def get_sessions(
             hermes_query += " ORDER BY timestamp DESC LIMIT ?"
             params.append(per_agent_limit)
             hermes_rows = [dict(row) for row in conn.execute(hermes_query, params).fetchall()]
-        hermes_groups: dict[str, dict[str, Any]] = {}
         for row in hermes_rows:
             agent = row.get("agent_id") or "hermes"
             raw_sid = row.get("session_id")
@@ -1093,6 +1184,7 @@ async def get_sessions(
                     "allowed_count": 0,
                     "hitl_count": 0,
                     "duration_sum_ms": 0,
+                    "_audit_hashes": set(),
                 }
                 hermes_groups[sid] = group
 
@@ -1109,30 +1201,14 @@ async def get_sessions(
             group["allowed_count"] += 1 if outcome in ALLOW_OUTCOMES else 0
             group["hitl_count"] += 1 if outcome in HITL_OUTCOMES else 0
             group["duration_sum_ms"] += int(row.get("duration_ms") or 0)
-
-        for group in hermes_groups.values():
-            start_ts = group.pop("start_ts")
-            end_ts = group.pop("end_ts")
-            duration_sum_ms = group.pop("duration_sum_ms")
-            if start_ts is not None and end_ts is not None and end_ts > start_ts:
-                duration_ms = int((end_ts - start_ts).total_seconds() * 1000)
-            else:
-                duration_ms = duration_sum_ms
-            hermes_summaries.append(SessionSummary(
-                session_id=group["session_id"],
-                agent_id=group["agent_id"],
-                agent_framework=group["agent_framework"],
-                agent_model=group["agent_model"],
-                start_time=group["start_time"],
-                end_time=group["end_time"],
-                total_events=group["total_events"],
-                blocked_count=group["blocked_count"],
-                allowed_count=group["allowed_count"],
-                hitl_count=group["hitl_count"],
-                duration_ms=duration_ms,
-            ))
+            ah = (row.get("audit_hash") or "").strip()
+            if ah:
+                group["_audit_hashes"].add(ah)
+        # Hermes summaries are converted after the audit groups are built so each one can be
+        # deduplicated against its authoritative audit_trail '-group-' session.
 
     audit_summaries: list[SessionSummary] = []
+    audit_intervals: list[tuple[str, datetime | None, datetime | None, set[str]]] = []
     with sqlite3.connect(db_path, timeout=10) as conn:
         conn.row_factory = sqlite3.Row
         audit_groups: list[dict[str, Any]] = []
@@ -1167,6 +1243,7 @@ async def get_sessions(
                     "allowed_count": 0,
                     "hitl_count": 0,
                     "duration_sum_ms": 0,
+                    "_hashes": set(),
                 }
                 audit_groups.append(group)
 
@@ -1184,11 +1261,15 @@ async def get_sessions(
             group["allowed_count"] += 1 if outcome in ALLOW_OUTCOMES else 0
             group["hitl_count"] += 1 if outcome in HITL_OUTCOMES else 0
             group["duration_sum_ms"] += row_duration_ms
+            h = row.get("hash")
+            if h:
+                group["_hashes"].add(h)
 
         for group in audit_groups:
             start_ts = group.pop("start_ts")
             end_ts = group.pop("end_ts")
             duration_sum_ms = group.pop("duration_sum_ms")
+            audit_intervals.append((group["agent_id"], start_ts, end_ts, group.get("_hashes", set())))
             if start_ts is not None and end_ts is not None and end_ts > start_ts:
                 duration_ms = int((end_ts - start_ts).total_seconds() * 1000)
             else:
@@ -1206,6 +1287,31 @@ async def get_sessions(
                 hitl_count=group["hitl_count"],
                 duration_ms=duration_ms,
             ))
+
+    # Convert surviving Hermes groups, dropping any that duplicate an audit_trail session.
+    for group in hermes_groups.values():
+        if _hermes_group_covered_by_audit(group, audit_intervals):
+            continue
+        start_ts = group.get("start_ts")
+        end_ts = group.get("end_ts")
+        duration_sum_ms = group.get("duration_sum_ms", 0)
+        if start_ts is not None and end_ts is not None and end_ts > start_ts:
+            duration_ms = int((end_ts - start_ts).total_seconds() * 1000)
+        else:
+            duration_ms = duration_sum_ms
+        hermes_summaries.append(SessionSummary(
+            session_id=group["session_id"],
+            agent_id=group["agent_id"],
+            agent_framework=group["agent_framework"],
+            agent_model=group["agent_model"],
+            start_time=group["start_time"],
+            end_time=group["end_time"],
+            total_events=group["total_events"],
+            blocked_count=group["blocked_count"],
+            allowed_count=group["allowed_count"],
+            hitl_count=group["hitl_count"],
+            duration_ms=duration_ms,
+        ))
 
     summaries = hermes_summaries + audit_summaries
     summaries.sort(key=lambda session: _parse_timestamp(session.start_time) or datetime.min, reverse=True)
@@ -1300,6 +1406,45 @@ def _governance_rbac_counts(db_path: Path, agent_id: str | None) -> dict[str, in
                 list(_GOV_RBAC_REASON_LIKE) + [cutoff_24h] + agent_params,
             ).fetchone()[0]
     return _cache_set(cache_key, result, ttl=30.0)
+
+
+async def get_provenance() -> dict[str, str | None]:
+    """Lightweight data-source provenance for the topbar (DB name + freshness).
+
+    Every page shows the same provenance strip, but most pages don't fetch the heavy
+    KPI metrics. This computes just the DB filename and the most recent event timestamp
+    across audit_trail and hermes_tool_traces.
+    """
+    db_path = get_db_path()
+    db_source = str(db_path).rsplit("/", 1)[-1] or str(db_path)
+    if not _has_audit_schema(db_path):
+        return {"db_source": db_source, "data_as_of": None}
+
+    cache_key = ("provenance",)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    max_ts: str | None = None
+    with sqlite3.connect(db_path, timeout=10) as conn:
+        row = conn.execute("SELECT MAX(timestamp) FROM audit_trail").fetchone()
+        if row and row[0]:
+            max_ts = str(row[0])
+        if _has_hermes_trace_schema(db_path):
+            hrow = conn.execute("SELECT MAX(timestamp) FROM hermes_tool_traces").fetchone()
+            if hrow and hrow[0]:
+                ht = str(hrow[0])
+                a, b = _parse_timestamp(max_ts), _parse_timestamp(ht)
+                if max_ts is None or (a and b and b > a):
+                    max_ts = ht
+
+    data_as_of = None
+    if max_ts:
+        dt = _parse_timestamp(max_ts)
+        data_as_of = dt.isoformat() if dt else max_ts
+
+    result = {"db_source": db_source, "data_as_of": data_as_of}
+    return _cache_set(cache_key, result, ttl=5.0)
 
 
 async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
@@ -1450,6 +1595,27 @@ _LATENCY_EDGES = [
     (300, None, "300ms+"),
 ]
 
+# Canonical control-pipeline order for the stage funnel (flow order, not by volume).
+_STAGE_ORDER = [
+    "L1.5 fast-path",
+    "L1.5",
+    "Stage 1",
+    "Stage 2",
+    "Stage 2.5 DeBERTa",
+    "Stage 2.5b Prompt Guard",
+    "Stage 3 LLM",
+    "Stage 3 ONNX",
+    "Stage 3 ONNX Prompt Guard",
+    "Output Guard",
+]
+
+
+def _stage_order_key(stage: str) -> int:
+    try:
+        return _STAGE_ORDER.index(stage)
+    except ValueError:
+        return len(_STAGE_ORDER)
+
 
 def _latency_distribution(db_path: Path, cutoff: str, agent_id: str | None) -> LatencyDistribution:
     """Latency comes only from hermes_tool_traces; audit_trail has no latency column.
@@ -1589,7 +1755,7 @@ async def get_overview_charts(window: str = "24h", agent_id: str | None = None) 
 
     stage_funnel = [
         StageBucket(stage=stage, total=v["total"], blocked=v["blocked"], allowed=v["allowed"], hitl=v["hitl"])
-        for stage, v in sorted(stage_acc.items(), key=lambda kv: kv[1]["total"], reverse=True)
+        for stage, v in sorted(stage_acc.items(), key=lambda kv: _stage_order_key(kv[0]))
     ]
     block_reasons = [ReasonBucket(category=k, count=v) for k, v in reason_acc.items() if v > 0]
     timeline = [

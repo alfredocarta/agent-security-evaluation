@@ -8,7 +8,7 @@ const { createApp } = Vue;
     sessionLoadingMore: false, sessionPageSize: 20, sessionPage: 0, sessionsPage: 0, sessionsPageSize: 10,
     sessionsPageCache: {}, sessionsHasMore: false, sessionsLoading: false, expandedSession: null,
     loadingSession: false, expandedReasons: new Set(), expandedEventDetails: new Set(), eventExplanations: {}, loadingEventDetails: new Set(), sessionSearch: '',
-    lastRefresh: '', refreshLabel: 'manual', footerText: 'ASF v2',
+    lastRefresh: '', refreshLabel: '5s', footerText: 'ASF v2', dataAsOf: null, dbSource: '',
   }),
   computed: {
     filteredSessions() {
@@ -51,13 +51,14 @@ const { createApp } = Vue;
     maxSessionDuration() { return this.sessions.length ? (Math.max(...this.sessions.map(s => s.duration_ms || 0)) || 1) : 1; },
   },
   watch: { sessionSearch() { this.sessionsPage = 0; this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.expandedEventDetails = new Set(); } },
-  mounted() { this.refresh(); },
+  mounted() { this.refresh(); setInterval(this.refresh, 5000); },
   methods: {
     ...ASF.methods,
     async refresh() {
       const agents = await this.fetchJson('/api/agents');
       this.agents = agents;
       await this.loadSessionsPage(this.sessionsPage, { force: true, collapse: false });
+      this.loadProvenance();
       this.lastRefresh = new Date().toLocaleTimeString();
       if (this.expandedSession) this.loadSession(this.expandedSession);
     },

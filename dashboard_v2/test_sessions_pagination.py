@@ -418,6 +418,10 @@ def test_overview_charts_buckets_stages_reasons_and_latency(tmp_path, monkeypatc
     assert stages["Stage 2.5 DeBERTa"].blocked == 1
     assert reasons["content_detection"] == 1
 
+    # Funnel rows follow control-pipeline order, not descending volume.
+    order = [s.stage for s in charts.stage_funnel]
+    assert order.index("L1.5 fast-path") < order.index("Stage 2.5 DeBERTa")
+
     # Latency comes only from hermes_tool_traces.
     assert charts.latency.sample_count == 4
     assert sum(b.count for b in charts.latency.buckets) == 4
@@ -455,3 +459,121 @@ def test_get_sessions_computes_legacy_audit_duration(tmp_path, monkeypatch):
 
     assert len(sessions) == 1
     assert sessions[0].duration_ms == 375
+
+
+def test_hermes_trace_explanation_recovers_full_pipeline_from_audit_trail(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_test_db(db_path)
+    conn = sqlite3.connect(db_path)
+
+    # A real Hermes tool call lands as ONE summary row in hermes_tool_traces (no
+    # per-stage steps, no audit_hash back-link) and as a hash-chained per-stage
+    # sequence in audit_trail. The chain is what carries the decision path.
+    chain = [
+        ("c-int", "INTERCEPTOR_START", "Interceptor invoked", None),
+        ("c-s1s", "STAGE_1_START", "Regex pattern analysis", "c-int"),
+        ("c-s1p", "STAGE_1_PASS", "No dangerous pattern matched", "c-s1s"),
+        ("c-s2s", "STAGE_2_START", "ML classifier analysis", "c-s1p"),
+        ("c-s2u", "STAGE_2_UNCERTAIN", "Classifier uncertain (confidence: 0.42)", "c-s2s"),
+        ("c-25s", "STAGE_2.5_START", "DeBERTa fast gate", "c-s2u"),
+        ("c-25v", "STAGE_2.5A_VERDICT", "DeBERTa verdict: DANGEROUS", "c-25s"),
+        ("c-kill", "KILL_SWITCH", "KILL SWITCH ACTIVATED (Stage 2.5 DeBERTa)", "c-25v"),
+    ]
+    for h, outcome, reason, prev in chain:
+        conn.execute(
+            # audit_trail stores space-separated timestamps; hermes_tool_traces stores ISO 'T'.
+            "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+            "VALUES (?, '2026-06-07 18:28:16', 'hermes-live-agent', 'shell', ?, ?, ?)",
+            (h, outcome, reason, prev),
+        )
+    # Hermes summary row: native tool name 'terminal', ASF tool 'shell', DENY,
+    # audit_hash empty (the pre-fix data shape this recovery path targets).
+    conn.execute(
+        "INSERT INTO hermes_tool_traces "
+        "(id, timestamp, agent_id, agent_type, agent_model, session_id, hermes_tool_name, "
+        "asf_tool_name, args_hash, verdict, outcome, reason, stage, asf_latency_ms, "
+        "tool_duration_ms, trace_id, audit_hash, created_at) "
+        "VALUES ('htrace-deny', '2026-06-07T18:28:16', 'hermes-live-agent', 'Hermes Agent', "
+        "'gpt-5.5', 'sess-deny', 'terminal', 'shell', 'args', 'DENY', 'BLOCKED', "
+        "'KILL SWITCH ACTIVATED (Stage 2.5 DeBERTa)', NULL, NULL, 5368, NULL, NULL, "
+        "'2026-06-07T18:28:16')"
+    )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    explanation = asyncio.run(db.get_event_explanation("htrace-deny"))
+
+    # Despite the missing audit_hash, the explanation rebuilds the full 8-stage path
+    # by matching agent_id + ASF tool + verdict within the time window.
+    outcomes = [stage.outcome for stage in explanation.pipeline]
+    assert len(explanation.pipeline) == 8
+    assert outcomes[0] == "INTERCEPTOR_START"
+    assert "KILL_SWITCH" in outcomes
+    assert explanation.final_verdict == "DENY"
+
+
+def test_hermes_trace_explanation_falls_back_when_no_audit_chain(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_test_db(db_path)
+    _point_dashboard_to(db_path, monkeypatch)
+
+    # _create_test_db writes ALLOW hermes traces with no matching audit_trail chain
+    # for hermes-live-agent; the explanation must still return the single summary node.
+    explanation = asyncio.run(db.get_event_explanation("h000"))
+
+    assert len(explanation.pipeline) == 1
+    assert explanation.pipeline[0].terminal is True
+
+
+def test_get_sessions_dedupes_hermes_trace_against_audit_session(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE audit_trail ("
+        "hash TEXT PRIMARY KEY, timestamp TEXT, agent_id TEXT, action TEXT, "
+        "outcome TEXT, reason TEXT, prev_hash TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE hermes_tool_traces ("
+        "id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hermes', "
+        "agent_id TEXT NOT NULL, agent_type TEXT, agent_model TEXT, session_id TEXT, task_id TEXT, "
+        "tool_call_id TEXT, hermes_tool_name TEXT NOT NULL, asf_tool_name TEXT NOT NULL, "
+        "args_hash TEXT NOT NULL, args_preview TEXT, output_hash TEXT, output_preview TEXT, "
+        "verdict TEXT, outcome TEXT, reason TEXT, stage TEXT, confidence REAL, "
+        "asf_latency_ms INTEGER, tool_duration_ms INTEGER, side_effect_verified INTEGER DEFAULT 0, "
+        "side_effect_occurred INTEGER, expected_label TEXT, human_label TEXT, scenario_id TEXT, "
+        "threat_id TEXT, trace_id TEXT, audit_hash TEXT, created_at TEXT NOT NULL)"
+    )
+    # One logical Hermes call recorded in BOTH tables at the same wall-clock time:
+    # a per-stage chain in audit_trail (authoritative '-group-' session) and a summary
+    # row in hermes_tool_traces (task-keyed). It must surface as ONE session, not two.
+    conn.execute(
+        "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+        "VALUES ('a-int', '2026-06-08 09:49:47', 'hermes-live-agent', 'shell', "
+        "'INTERCEPTOR_START', 'Interceptor invoked', NULL)"
+    )
+    conn.execute(
+        "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+        "VALUES ('a-clear', '2026-06-08 09:49:47', 'hermes-live-agent', 'shell', "
+        "'HEURISTIC_CLEAR', 'Cleared by heuristic fast-path (score=0.00)', 'a-int')"
+    )
+    conn.execute(
+        "INSERT INTO hermes_tool_traces "
+        "(id, timestamp, agent_id, agent_type, session_id, task_id, tool_call_id, hermes_tool_name, "
+        "asf_tool_name, args_hash, verdict, outcome, reason, asf_latency_ms, tool_duration_ms, "
+        "trace_id, audit_hash, created_at) "
+        "VALUES ('h-dup', '2026-06-08T09:49:47', 'hermes-live-agent', 'Hermes Agent', NULL, 'task-9', "
+        "'call-9', 'terminal', 'shell', 'args', 'ALLOW', 'ALLOWED', 'ok', 5, 7, 'trace-9', NULL, "
+        "'2026-06-08T09:49:47')"
+    )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    sessions = asyncio.run(db.get_sessions(limit=20, offset=0, agent_id="hermes-live-agent"))
+
+    # The audit-trail '-group-' session is kept; the Hermes '-task-' duplicate is dropped.
+    assert len(sessions) == 1
+    assert "-group-" in sessions[0].session_id
+    assert "-task-" not in sessions[0].session_id
