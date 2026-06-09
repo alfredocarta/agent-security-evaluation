@@ -9,6 +9,7 @@ const { createApp } = Vue;
     sessionsPageCache: {}, sessionsHasMore: false, sessionsLoading: false, expandedSession: null,
     loadingSession: false, expandedReasons: new Set(), activeEventDetailsId: null, eventExplanations: {}, loadingEventDetails: new Set(), selectedPipelineStages: {}, sessionSearch: '',
     lastRefresh: '', refreshLabel: '5s', footerText: 'ASF v2', dataAsOf: null, dbSource: '',
+    ENVELOPE_NOISE_KEYS: new Set(['originalfile', 'filepath', 'file_path', 'path', 'type', 'numlines', 'totallines', 'startline', 'offset', 'limit', 'interrupted', 'isimage', 'nooutputexpected', 'sandboxed', 'sandbox_warning', 'mode', 'gitoperation', 'durationms', 'duration_ms', 'returncode', 'exit_code', 'stderr']),
   }),
   computed: {
     filteredSessions() {
@@ -221,41 +222,39 @@ const { createApp } = Vue;
       if (!marker && text.length === working.length - prefix.length) return raw;
       return `${this.unescapeLegacyEnvelopeText(text)}${marker}`;
     },
+    extractEnvelopeText(value, depth) {
+      // Generic, tool-agnostic extraction mirroring the framework trace_output_preview helper.
+      depth = depth || 0;
+      if (typeof value === 'string') return value;
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return JSON.stringify(value, null, 2);
+      const contentKeys = ['output', 'stdout', 'content', 'text', 'result', 'message', 'body'];
+      for (const key of contentKeys) {
+        if (typeof value[key] === 'string') return value[key];
+      }
+      if (depth < 2) {
+        for (const nested of Object.values(value)) {
+          if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+            const inner = this.extractEnvelopeText(nested, depth + 1);
+            if (inner && !/^\s*[{[]/.test(inner)) return inner;
+          }
+        }
+      }
+      const labeled = Object.entries(value).filter(([k, v]) => typeof v === 'string' && v.trim() && !this.ENVELOPE_NOISE_KEYS.has(k.toLowerCase()));
+      if (labeled.length === 1) return labeled[0][1];
+      if (labeled.length) return labeled.map(([k, v]) => `${k}:\n${v}`).join('\n\n');
+      const denoised = {};
+      for (const [k, v] of Object.entries(value)) {
+        if (!this.ENVELOPE_NOISE_KEYS.has(k.toLowerCase())) denoised[k] = v;
+      }
+      return JSON.stringify(Object.keys(denoised).length ? denoised : value, null, 2);
+    },
     formatModalOutput(raw) {
       const parsed = this.parseJsonObject(raw);
       if (!parsed) return this.legacyTruncatedEnvelopeOutput(raw);
-      const hasOutput = Object.prototype.hasOwnProperty.call(parsed, 'output');
-      const hasError = Object.prototype.hasOwnProperty.call(parsed, 'error');
-      const hasExitCode = Object.prototype.hasOwnProperty.call(parsed, 'exit_code');
-      const hasStdout = Object.prototype.hasOwnProperty.call(parsed, 'stdout');
-      const hasStderr = Object.prototype.hasOwnProperty.call(parsed, 'stderr');
-      const hasContent = typeof parsed.content === 'string';
-      const hasFileContent = parsed.file && typeof parsed.file === 'object' && typeof parsed.file.content === 'string';
-      const hasEdit = typeof parsed.oldString === 'string' && typeof parsed.newString === 'string';
-      const parts = [];
-      if (hasOutput) {
-        parts.push(this.stringifyModalValue(parsed.output));
-      } else if (hasStdout || hasStderr) {
-        const stdout = hasStdout ? this.stringifyModalValue(parsed.stdout) : '';
-        const stderr = hasStderr ? this.stringifyModalValue(parsed.stderr) : '';
-        if (stdout.trim().length > 0) parts.push(stdout);
-        if (stderr.trim().length > 0) parts.push(`stderr: ${stderr}`);
-      } else if (hasContent) {
-        parts.push(parsed.content);
-      } else if (hasFileContent) {
-        parts.push(parsed.file.content);
-      } else if (hasEdit) {
-        if (typeof parsed.filePath === 'string') parts.push(parsed.filePath);
-        parts.push(`old:\n${parsed.oldString}`);
-        parts.push(`new:\n${parsed.newString}`);
-      } else if (hasError && parsed.error != null && String(parsed.error).trim().length > 0) {
-        parts.push(`error: ${this.stringifyModalValue(parsed.error)}`);
-      } else {
-        parts.push(JSON.stringify(parsed, null, 2));
-      }
-      if (hasError && parts.length > 0 && !String(parts[0]).startsWith('error: ') && parsed.error != null && String(parsed.error).trim().length > 0) parts.push(`error: ${this.stringifyModalValue(parsed.error)}`);
-      if (hasExitCode && Number(parsed.exit_code) !== 0) parts.push(`exit_code: ${parsed.exit_code}`);
-      return parts.join('\n');
+      let text = this.extractEnvelopeText(parsed);
+      if (parsed.stderr != null && String(parsed.stderr) !== '') text = `${text}\nstderr: ${this.stringifyModalValue(parsed.stderr)}`;
+      if (Object.prototype.hasOwnProperty.call(parsed, 'exit_code') && Number(parsed.exit_code) !== 0) text = `${text}\nexit_code: ${parsed.exit_code}`;
+      return text;
     },
     isTerminalEvent(ev) { return ['deny', 'allow', 'hitl'].includes(this.decisionTone(ev)); },
     isBlockedEvent(ev) { return this.decisionTone(ev) === 'deny'; },
