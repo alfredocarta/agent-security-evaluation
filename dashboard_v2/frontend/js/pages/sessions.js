@@ -226,7 +226,8 @@ const { createApp } = Vue;
       // Generic, tool-agnostic extraction mirroring the framework trace_output_preview helper.
       depth = depth || 0;
       if (typeof value === 'string') return value;
-      if (!value || typeof value !== 'object' || Array.isArray(value)) return JSON.stringify(value, null, 2);
+      if (Array.isArray(value)) return value.length && value.every(i => typeof i === 'string') ? value.join('\n') : JSON.stringify(value, null, 2);
+      if (!value || typeof value !== 'object') return JSON.stringify(value, null, 2);
       const contentKeys = ['output', 'stdout', 'content', 'text', 'result', 'message', 'body'];
       for (const key of contentKeys) {
         if (typeof value[key] === 'string') return value[key];
@@ -238,6 +239,9 @@ const { createApp } = Vue;
             if (inner && !/^\s*[{[]/.test(inner)) return inner;
           }
         }
+      }
+      for (const [k, v] of Object.entries(value)) {
+        if (!this.ENVELOPE_NOISE_KEYS.has(k.toLowerCase()) && Array.isArray(v) && v.length && v.every(i => typeof i === 'string')) return v.join('\n');
       }
       const labeled = Object.entries(value).filter(([k, v]) => typeof v === 'string' && v.trim() && !this.ENVELOPE_NOISE_KEYS.has(k.toLowerCase()));
       if (labeled.length === 1) return labeled[0][1];
