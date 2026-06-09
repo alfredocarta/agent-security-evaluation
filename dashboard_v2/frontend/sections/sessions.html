@@ -95,8 +95,10 @@ are not captured - ASF operates at the tool call boundary.
 <span :class="stageBadgeClass(ev.stage)" :title="stageTechnical(ev.stage)">{{ stageLabel(ev.stage) }}</span>
 <span v-if="ev.latency_ms != null" class="mono" style="font-size:12px;color:var(--text-muted);">{{ formatDuration(ev.latency_ms) }}</span>
 <button v-if="isTerminalEvent(ev)" :class="eventDetailsButtonClass(ev)" style="margin-left:auto;" @click.stop="toggleEventDetails(ev)">
-<svg class="chevron" :class="{ open: expandedEventDetails.has(ev.event_id) }" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-<polyline points="4,2 8,6 4,10"/>
+<svg class="popup-open-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<rect x="1.5" y="3.5" width="7" height="7" rx="1.2"/>
+<path d="M6 1.5h4.5V6"/>
+<path d="M10.5 1.5 6 6"/>
 </svg>
 {{ loadingEventDetails.has(ev.event_id) ? 'Loading…' : 'Details' }}
 </button>
@@ -124,7 +126,7 @@ Previous
 </button>
 <button class="hitl-btn" :disabled="sessionPage + 1 >= expandedSessionTotalPages || sessionLoadingMore"
 @click="nextSessionPage">
-{{ sessionLoadingMore ? 'Loading…' : 'Next 20' }}
+{{ sessionLoadingMore ? 'Loading…' : 'Next ' + sessionPageSize }}
 </button>
 </div>
 </div>
@@ -155,11 +157,10 @@ Previous
 <div class="modal-card session-details-modal" role="dialog" aria-modal="true" aria-label="Event decision details" @click.stop>
 <div class="modal-hdr session-details-hdr">
 <div class="modal-title session-details-title">
-<span class="mac-window-controls" aria-hidden="true"><span class="mac-dot mac-dot-close"></span><span class="mac-dot mac-dot-minimize"></span><span class="mac-dot mac-dot-zoom"></span></span>
 <span>{{ ev.tool_name || ev.action || 'Event details' }}</span>
 <span :class="verdictBadgeClass(ev)">{{ ev.verdict || ev.outcome }}</span>
 </div>
-<button class="session-details-close" type="button" title="Close details" aria-label="Close details" @click="closeEventDetails">minimize</button>
+<button class="session-details-close" type="button" title="Close" aria-label="Close" @click="closeEventDetails">Close</button>
 </div>
 <div class="modal-body session-details-body">
 <div class="event-details-panel drill-content session-details-content">

@@ -5,9 +5,9 @@ const { createApp } = Vue;
     template: ASF.shell('sessions', 'Sessions', content),
   data: () => ({
     sessions: [], agents: [], selectedAgent: '', sessionEvents: [], sessionPageCache: {}, sessionHasMore: {},
-    sessionLoadingMore: false, sessionPageSize: 20, sessionPage: 0, sessionsPage: 0, sessionsPageSize: 10,
+    sessionLoadingMore: false, sessionPageSize: 10, sessionPage: 0, sessionsPage: 0, sessionsPageSize: 10,
     sessionsPageCache: {}, sessionsHasMore: false, sessionsLoading: false, expandedSession: null,
-    loadingSession: false, expandedReasons: new Set(), expandedEventDetails: new Set(), activeEventDetailsId: null, eventExplanations: {}, loadingEventDetails: new Set(), selectedPipelineStages: {}, sessionSearch: '',
+    loadingSession: false, expandedReasons: new Set(), activeEventDetailsId: null, eventExplanations: {}, loadingEventDetails: new Set(), selectedPipelineStages: {}, sessionSearch: '',
     lastRefresh: '', refreshLabel: '5s', footerText: 'ASF v2', dataAsOf: null, dbSource: '',
   }),
   computed: {
@@ -188,12 +188,10 @@ const { createApp } = Vue;
         return;
       }
       this.activeEventDetailsId = ev.event_id;
-      this.expandedEventDetails = new Set([ev.event_id]);
       if (!this.eventExplanations[ev.event_id]) await this.loadEventExplanation(ev);
     },
     closeEventDetails() {
       this.activeEventDetailsId = null;
-      this.expandedEventDetails = new Set();
     },
     async loadEventExplanation(ev) {
       if (!ev?.event_id || this.loadingEventDetails.has(ev.event_id)) return;
