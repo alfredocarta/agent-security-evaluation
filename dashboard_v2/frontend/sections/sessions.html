@@ -190,7 +190,7 @@ Previous
 </div>
 <div class="decision-io">
 <div class="decision-io-head"><span>Output</span><span v-if="explanationForEvent(ev).output_truncated" class="badge badge-neutral">truncated</span></div>
-<pre class="decision-io-block" :class="{ 'decision-io-empty': !explanationForEvent(ev).tool_output }">{{ formatModalOutput(explanationForEvent(ev).tool_output) || 'output not recorded' }}</pre>
+<pre class="decision-io-block" :class="{ 'decision-io-empty': !explanationForEvent(ev).tool_output }">{{ formatModalOutput(explanationForEvent(ev).tool_output) || (decisionTone(ev) === 'deny' ? 'Not executed (blocked before run)' : 'output not recorded') }}</pre>
 </div>
 </div>
 <div v-if="loadingEventDetails.has(ev.event_id) && !explanationForEvent(ev)" style="font-size:13px;color:var(--text-muted);">Loading explanation…</div>
