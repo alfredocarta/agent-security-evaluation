@@ -121,10 +121,6 @@ window.ASF = (() => {
       label = 'Quick screening';
       shortTech = 'L1.5 fast-path';
       isFallback = false;
-    } else if (s.includes('policy') || s.includes('governance')) {
-      label = 'Policy check';
-      shortTech = technical;
-      isFallback = false;
     }
     return { label, technical, shortTech, isFallback };
   }
