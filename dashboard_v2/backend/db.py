@@ -1587,7 +1587,7 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
         total_tool_calls = max(0, int(counts.get("INTERCEPTOR_START", 0)) - gov["total"])
         blocked = max(0, sum(int(counts.get(outcome, 0)) for outcome in BLOCK_OUTCOMES) - gov["total"])
         allowed = sum(int(counts.get(outcome, 0)) for outcome in ALLOW_OUTCOMES)
-        hitl = sum(int(counts.get(outcome, 0)) for outcome in HITL_OUTCOMES)
+        hitl = _count_pending_hitl(db_path, None)
         terminal = blocked + allowed + hitl
         max_ts = _parse_timestamp(cache.get("max_interceptor_ts"))
         # The cache only holds lifetime aggregates and freshness, not a windowed count.
@@ -1632,14 +1632,15 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
         )
 
     if not _has_audit_schema(db_path):
-        terminal = hermes["blocked"] + hermes["allowed"] + hermes["hitl"]
+        hitl = 0
+        terminal = hermes["blocked"] + hermes["allowed"] + hitl
         return KPIMetrics(
             total_tool_calls=hermes["total"],
             detection_rate=(hermes["blocked"] / terminal) if terminal else 0.0,
             false_positive_rate=0.0,
             blocked_count=hermes["blocked"],
             allowed_count=hermes["allowed"],
-            hitl_count=hermes["hitl"],
+            hitl_count=hitl,
             avg_latency_ms=hermes["avg_latency_ms"],
             p95_latency_ms=hermes["p95_latency_ms"],
             tool_calls_last_24h=hermes["last_24h"],
@@ -1678,7 +1679,7 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
     gov = _governance_rbac_counts(db_path, agent_id)
     blocked = max(0, sum(counts.get(outcome, 0) for outcome in BLOCK_OUTCOMES) - gov["total"])
     allowed = sum(counts.get(outcome, 0) for outcome in ALLOW_OUTCOMES)
-    hitl = sum(counts.get(outcome, 0) for outcome in HITL_OUTCOMES)
+    hitl = _count_pending_hitl(db_path, agent_id)
     terminal = blocked + allowed + hitl
     total_tool_calls = max(0, total_tool_calls - gov["total"])
     audit_calls_last_24h = max(0, audit_calls_last_24h - gov["last_24h"])
@@ -2053,6 +2054,38 @@ def _ensure_hitl_decision_table(conn: sqlite3.Connection) -> None:
     )
 
 
+def _pending_hitl_filter(alias: str = "a") -> str:
+    # Pending HITL is one canonical definition used by both the Overview KPI and
+    # the Human Oversight queue: a HITL_REQUESTED audit row with no dashboard-side
+    # decision and no append-only HITL_APPROVED/HITL_REJECTED audit decision naming
+    # that request. There is intentionally no time-window filter; old requests stay
+    # pending until reviewed.
+    return (
+        f"{alias}.outcome = 'HITL_REQUESTED' "
+        "AND d.event_id IS NULL "
+        "AND NOT EXISTS ("
+        "SELECT 1 FROM audit_trail decision "
+        "WHERE decision.outcome IN ('HITL_APPROVED', 'HITL_REJECTED') "
+        f"AND decision.reason LIKE ('event:' || {alias}.hash || '%')"
+        ")"
+    )
+
+
+def _count_pending_hitl(db_path: Path, agent_id: str | None = None) -> int:
+    if not _has_audit_schema(db_path):
+        return 0
+    agent_clause = " AND a.agent_id = ?" if agent_id else ""
+    params: list[Any] = [agent_id] if agent_id else []
+    with sqlite3.connect(db_path) as conn:
+        _ensure_hitl_decision_table(conn)
+        return int(conn.execute(
+            "SELECT COUNT(*) FROM audit_trail a "
+            "LEFT JOIN dashboard_hitl_decisions d ON d.event_id = a.hash "
+            f"WHERE {_pending_hitl_filter('a')}{agent_clause}",
+            params,
+        ).fetchone()[0] or 0)
+
+
 def _append_audit_event(conn: sqlite3.Connection, agent_id: str, action: str, outcome: str, reason: str) -> str:
     import hashlib
 
@@ -2081,10 +2114,10 @@ async def get_hitl_events() -> list[AuditEvent]:
     db_path = get_db_path()
     if not _has_audit_schema(db_path):
         return []
-    cutoff = (datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         _ensure_hitl_decision_table(conn)
+        pending_filter = _pending_hitl_filter("a")
         if _has_hermes_trace_schema(db_path):
             query = (
                 "SELECT a.hash, a.timestamp, a.agent_id, a.action, a.outcome, a.reason, a.prev_hash, "
@@ -2092,8 +2125,8 @@ async def get_hitl_events() -> list[AuditEvent]:
                 "FROM audit_trail a "
                 "LEFT JOIN hermes_tool_traces h ON h.audit_hash = a.hash "
                 "LEFT JOIN dashboard_hitl_decisions d ON d.event_id = a.hash "
-                "WHERE a.outcome = 'HITL_REQUESTED' AND a.timestamp >= ? AND d.event_id IS NULL "
-                "ORDER BY a.timestamp DESC LIMIT 100"
+                f"WHERE {pending_filter} "
+                "ORDER BY a.timestamp DESC"
             )
         else:
             query = (
@@ -2101,10 +2134,10 @@ async def get_hitl_events() -> list[AuditEvent]:
                 "NULL AS agent_model "
                 "FROM audit_trail a "
                 "LEFT JOIN dashboard_hitl_decisions d ON d.event_id = a.hash "
-                "WHERE a.outcome = 'HITL_REQUESTED' AND a.timestamp >= ? AND d.event_id IS NULL "
-                "ORDER BY a.timestamp DESC LIMIT 100"
+                f"WHERE {pending_filter} "
+                "ORDER BY a.timestamp DESC"
             )
-        rows = [dict(row) for row in conn.execute(query, (cutoff,)).fetchall()]
+        rows = [dict(row) for row in conn.execute(query).fetchall()]
         conn.commit()
     for row in rows:
         key = (row.get("prev_hash") or row.get("hash") or "")[:12]

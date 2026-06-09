@@ -176,6 +176,58 @@ def test_hitl_approve_reject_persist_decisions_and_remove_pending(tmp_path, monk
     assert any("event:hitl-reject" in reason for reason in hitl_reasons)
 
 
+
+def test_pending_hitl_metric_matches_queue_and_excludes_decided(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_test_db(db_path)
+    old_ts = (datetime.utcnow() - timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S.%f")
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S.%f")
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE dashboard_hitl_decisions ("
+        "event_id TEXT PRIMARY KEY, decision TEXT NOT NULL, decided_at TEXT NOT NULL, "
+        "reviewer TEXT, note TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+        "VALUES ('hitl-pending-old', ?, 'hermes-live-agent', 'terminal', "
+        "'HITL_REQUESTED', 'Stage 3 LLM flagged as dangerous', 'prev-p')",
+        (old_ts,),
+    )
+    conn.execute(
+        "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+        "VALUES ('hitl-decided-side-table', ?, 'hermes-live-agent', 'terminal', "
+        "'HITL_REQUESTED', 'Stage 3 LLM flagged as dangerous', 'prev-d1')",
+        (now,),
+    )
+    conn.execute(
+        "INSERT INTO dashboard_hitl_decisions (event_id, decision, decided_at, reviewer, note) "
+        "VALUES ('hitl-decided-side-table', 'approve', ?, 'alice', 'ok')",
+        (now,),
+    )
+    conn.execute(
+        "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+        "VALUES ('hitl-decided-audit-only', ?, 'hermes-live-agent', 'terminal', "
+        "'HITL_REQUESTED', 'Stage 3 LLM flagged as dangerous', 'prev-d2')",
+        (now,),
+    )
+    conn.execute(
+        "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+        "VALUES ('hitl-decision-row', ?, 'hermes-live-agent', 'terminal', "
+        "'HITL_REJECTED', 'event:hitl-decided-audit-only reviewer:bob note:block', 'hitl-decided-audit-only')",
+        (now,),
+    )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    pending = asyncio.run(db.get_hitl_events())
+    metrics = asyncio.run(db.get_metrics(agent_id="hermes-live-agent"))
+
+    pending_ids = {event.event_id for event in pending}
+    assert pending_ids == {"hitl-pending-old"}
+    assert metrics.hitl_count == len(pending) == 1
+
 def test_stage3_onnx_prompt_guard_is_not_labeled_gemma():
     ev = db._normalize_event({
         "hash": "onnx-event",
