@@ -171,9 +171,19 @@ const { createApp } = Vue;
       const hasOutput = Object.prototype.hasOwnProperty.call(parsed, 'output');
       const hasError = Object.prototype.hasOwnProperty.call(parsed, 'error');
       const hasExitCode = Object.prototype.hasOwnProperty.call(parsed, 'exit_code');
-      if (!hasOutput && !hasError && !hasExitCode) return raw;
+      const hasStdout = Object.prototype.hasOwnProperty.call(parsed, 'stdout');
+      const hasStderr = Object.prototype.hasOwnProperty.call(parsed, 'stderr');
+      if (!hasOutput && !hasError && !hasExitCode && !hasStdout && !hasStderr) return raw;
       const parts = [];
-      if (hasOutput) parts.push(this.stringifyModalValue(parsed.output));
+      if (hasOutput) {
+        parts.push(this.stringifyModalValue(parsed.output));
+      } else if (hasStdout || hasStderr) {
+        const stdout = hasStdout ? this.stringifyModalValue(parsed.stdout) : '';
+        const stderr = hasStderr ? this.stringifyModalValue(parsed.stderr) : '';
+        if (stdout.trim().length > 0) parts.push(stdout);
+        if (stderr.trim().length > 0) parts.push(`stderr: ${stderr}`);
+        if (parts.length === 0) return raw;
+      }
       if (hasError && parsed.error != null && String(parsed.error).trim().length > 0) parts.push(`error: ${this.stringifyModalValue(parsed.error)}`);
       if (hasExitCode && Number(parsed.exit_code) !== 0) parts.push(`exit_code: ${parsed.exit_code}`);
       return parts.join('\n');
