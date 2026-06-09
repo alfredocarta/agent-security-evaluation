@@ -167,8 +167,16 @@ const { createApp } = Vue;
     formatModalInput(raw) {
       const parsed = this.parseJsonObject(raw);
       if (!parsed) return raw;
-      for (const key of ['command', 'input', 'prompt', 'text']) {
-        if (Object.prototype.hasOwnProperty.call(parsed, key)) return this.stringifyModalValue(parsed[key]);
+      for (const key of ['command', 'input', 'prompt', 'text', 'query', 'pattern', 'url', 'message']) {
+        if (typeof parsed[key] === 'string') return this.stringifyModalValue(parsed[key]);
+      }
+      for (const key of ['file_path', 'path']) {
+        if (typeof parsed[key] === 'string') {
+          const extras = [];
+          if (Number.isFinite(Number(parsed.offset)) && parsed.offset != null) extras.push(`offset ${parsed.offset}`);
+          if (Number.isFinite(Number(parsed.limit)) && parsed.limit != null) extras.push(`limit ${parsed.limit}`);
+          return extras.length ? `${parsed[key]} (${extras.join(', ')})` : parsed[key];
+        }
       }
       const entries = Object.entries(parsed);
       if (entries.length === 1 && typeof entries[0][1] === 'string') return entries[0][1];
