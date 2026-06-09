@@ -231,6 +231,7 @@ const { createApp } = Vue;
       const hasStderr = Object.prototype.hasOwnProperty.call(parsed, 'stderr');
       const hasContent = typeof parsed.content === 'string';
       const hasFileContent = parsed.file && typeof parsed.file === 'object' && typeof parsed.file.content === 'string';
+      const hasEdit = typeof parsed.oldString === 'string' && typeof parsed.newString === 'string';
       const parts = [];
       if (hasOutput) {
         parts.push(this.stringifyModalValue(parsed.output));
@@ -243,6 +244,10 @@ const { createApp } = Vue;
         parts.push(parsed.content);
       } else if (hasFileContent) {
         parts.push(parsed.file.content);
+      } else if (hasEdit) {
+        if (typeof parsed.filePath === 'string') parts.push(parsed.filePath);
+        parts.push(`old:\n${parsed.oldString}`);
+        parts.push(`new:\n${parsed.newString}`);
       } else if (hasError && parsed.error != null && String(parsed.error).trim().length > 0) {
         parts.push(`error: ${this.stringifyModalValue(parsed.error)}`);
       } else {
