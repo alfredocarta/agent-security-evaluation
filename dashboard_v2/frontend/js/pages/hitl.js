@@ -23,20 +23,6 @@ const { createApp } = Vue;
         <div class="event-explanation-reason">{{ hitlExplanation().final_reason || hitlModal.event.reason || 'No reason recorded.' }}</div>
       </div>
 
-      <div v-if="hitlFlaggingStage()" class="pipeline-card pipeline-detail-card" :class="stageToneClass(hitlFlaggingStage())" style="margin-bottom:14px;">
-        <div class="pipeline-card-hdr">
-          <div class="pipeline-detail-title">
-            <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
-              <span class="pipeline-detail-name">Stage that requested review: {{ stageLabel(hitlFlaggingStage().stage) }}</span>
-              <span :class="verdictBadgeClass(hitlFlaggingStage())">{{ hitlFlaggingStage().verdict || hitlFlaggingStage().outcome || 'HITL' }}</span>
-            </div>
-            <div class="pipeline-detail-tech" :title="stageTechnical(hitlFlaggingStage().stage)">Technical: {{ stageTechnical(hitlFlaggingStage().stage) }}</div>
-          </div>
-          <div class="pipeline-score">{{ stageConfidenceLabel(hitlFlaggingStage()) }}</div>
-        </div>
-        <div class="pipeline-reason">{{ hitlFlaggingStage().reason || hitlExplanation().final_reason || hitlModal.event.reason || 'No reason recorded for this stage.' }}</div>
-      </div>
-
       <div class="pipeline-timeline" style="margin-bottom:14px;">
         <div class="decision-context-title">Decision path</div>
         <div class="pipeline-stepper" role="tablist" aria-label="Decision pipeline stages">
@@ -61,7 +47,7 @@ const { createApp } = Vue;
             </div>
             <div class="pipeline-score">{{ stageConfidenceLabel(hitlSelectedPipelineStage()) }}</div>
           </div>
-          <div class="pipeline-reason">{{ hitlSelectedPipelineStage().reason || 'No reason recorded for this stage.' }}</div>
+          <div v-if="hitlSelectedPipelineStage().reason && hitlSelectedPipelineStage().reason !== (hitlExplanation().final_reason || hitlModal.event.reason)" class="pipeline-reason">{{ hitlSelectedPipelineStage().reason }}</div>
           <div class="pipeline-meta">
             <span v-if="hitlSelectedPipelineStage().timestamp">{{ timeOnly(hitlSelectedPipelineStage().timestamp) }}</span>
             <span v-if="hitlSelectedPipelineStage().latency_ms != null">{{ formatDuration(hitlSelectedPipelineStage().latency_ms) }}</span>
@@ -78,7 +64,7 @@ const { createApp } = Vue;
         </div>
         <div class="decision-io">
           <div class="decision-io-head"><span>Output</span><span v-if="hitlExplanation().output_truncated" class="badge badge-neutral">truncated</span></div>
-          <pre class="decision-io-block" :class="{ 'decision-io-empty': !hitlExplanation().tool_output }">{{ hitlExplanation().tool_output || 'output not recorded' }}</pre>
+          <pre class="decision-io-block" :class="{ 'decision-io-empty': !hitlExplanation().tool_output }">{{ hitlExplanation().tool_output || 'output not recorded (action paused for review)' }}</pre>
         </div>
       </div>
 
