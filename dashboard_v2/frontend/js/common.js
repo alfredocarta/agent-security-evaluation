@@ -96,22 +96,22 @@ window.ASF = (() => {
       label = 'Output check';
       shortTech = 'Output guard';
     } else if (s.includes('stage 3') || s.includes('onnx') || s.includes('llm')) {
-      label = 'Deep AI review';
+      label = 'AI review';
       shortTech = s.includes('onnx') ? 'Stage 3 ONNX Prompt Guard' : 'Stage 3 LLM';
     } else if ((s.includes('stage 2.5') || s.includes('2.5')) && s.includes('prompt guard')) {
-      label = 'Secondary AI analysis';
+      label = 'AI check';
       shortTech = 'Stage 2.5b Prompt Guard';
     } else if (s.includes('stage 2.5') || s.includes('deberta')) {
-      label = 'AI content analysis';
+      label = 'Content analysis';
       shortTech = 'Stage 2.5 DeBERTa';
     } else if (s.includes('stage 2') || s.includes('tf-idf') || s.includes('random forest')) {
-      label = 'Statistical classifier';
+      label = 'Statistical check';
       shortTech = 'Stage 2 TF-IDF + Random Forest';
     } else if (s.includes('stage 1') || s.includes('regex')) {
       label = 'Known patterns';
       shortTech = 'Stage 1 regex';
     } else if (s.includes('l1.5') || s.includes('fast-path') || s.includes('heuristic')) {
-      label = 'Quick screening (rules)';
+      label = 'Quick screening';
       shortTech = 'L1.5 fast-path';
     } else if (s.includes('policy') || s.includes('governance')) {
       label = 'Policy check';

@@ -433,6 +433,8 @@ def test_overview_charts_buckets_stages_reasons_and_latency(tmp_path, monkeypatc
 
     # Funnel rows follow control-pipeline order, not descending volume.
     order = [s.stage for s in charts.stage_funnel]
+    # No duplicate stage labels in the funnel.
+    assert len(order) == len(set(order)), f"Duplicate stage labels: {order}"
     assert order.index("L1.5 fast-path") < order.index("Stage 2.5 DeBERTa")
 
     # Latency comes only from hermes_tool_traces.
@@ -693,3 +695,70 @@ def test_get_sessions_dedupes_hermes_trace_against_audit_session(tmp_path, monke
     assert len(sessions) == 1
     assert "-group-" in sessions[0].session_id
     assert "-task-" not in sessions[0].session_id
+
+
+def test_hermes_recorded_agent_model_surfaces_in_sessions_and_explanation(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_test_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "UPDATE hermes_tool_traces SET agent_model = ? WHERE id = 'h000'",
+        ("qwen 3.5 via openrouter",),
+    )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    sessions = asyncio.run(db.get_sessions(limit=1, offset=0, agent_id="hermes-live-agent"))
+    explanation = asyncio.run(db.get_event_explanation("h000"))
+
+    assert sessions[0].agent_model == "qwen 3.5 via openrouter"
+    assert explanation.agent_model == "qwen 3.5 via openrouter"
+
+
+def test_hermes_absent_agent_model_is_not_recorded_not_hardcoded(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_test_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute("UPDATE hermes_tool_traces SET agent_model = NULL WHERE id = 'h000'")
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    sessions = asyncio.run(db.get_sessions(limit=1, offset=0, agent_id="hermes-live-agent"))
+    explanation = asyncio.run(db.get_event_explanation("h000"))
+
+    assert sessions[0].agent_model == "not recorded"
+    assert explanation.agent_model == "not recorded"
+    assert sessions[0].agent_model != "gpt-5.5 via openai-codex"
+    assert explanation.agent_model != "gpt-5.5 via openai-codex"
+
+
+def test_hitl_events_use_recorded_hermes_agent_model(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_test_db(db_path)
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S.%f")
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+        "VALUES ('hitl-qwen', ?, 'hermes-live-agent', 'terminal', 'HITL_REQUESTED', 'review', 'prev-q')",
+        (now,),
+    )
+    conn.execute(
+        "INSERT INTO hermes_tool_traces "
+        "(id, timestamp, agent_id, agent_type, agent_model, session_id, hermes_tool_name, "
+        "asf_tool_name, args_hash, verdict, outcome, reason, stage, asf_latency_ms, "
+        "tool_duration_ms, trace_id, audit_hash, created_at) "
+        "VALUES ('hitl-trace-qwen', ?, 'hermes-live-agent', 'Hermes Agent', 'qwen 3.5 via openrouter', "
+        "'hitl-session', 'terminal', 'terminal', 'args', 'HITL', 'HITL_REQUESTED', 'review', "
+        "'L1.5', 1, 2, 'hitl-trace-qwen', 'hitl-qwen', ?)",
+        (now, now),
+    )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    pending = asyncio.run(db.get_hitl_events())
+    event = next(ev for ev in pending if ev.event_id == "hitl-qwen")
+
+    assert event.agent_model == "qwen 3.5 via openrouter"

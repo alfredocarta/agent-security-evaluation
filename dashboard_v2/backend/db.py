@@ -128,8 +128,10 @@ EVAL_TOOL_AGENTS = {
     "triage_agent",
 }
 
+NOT_RECORDED_MODEL = "not recorded"
+
 AGENT_METADATA: dict[str, tuple[str, str | None]] = {
-    "hermes-live-agent": ("Hermes Agent", "gpt-5.5 via openai-codex"),
+    "hermes-live-agent": ("Hermes Agent", None),
     "claude-code-agent": ("Claude Code (MCP)", "claude-sonnet-4-6 via MCP"),
 }
 
@@ -160,9 +162,9 @@ ARTICLE_BY_OUTCOME = {
 }
 
 INTERMEDIATE_STAGE: dict[str, str] = {
-    "INTERCEPTOR_START": "L1.5",
-    "VALIDATOR_START": "L1.5",
-    "SIGNATURE_OK": "L1.5",
+    "INTERCEPTOR_START": "L1.5 fast-path",
+    "VALIDATOR_START": "L1.5 fast-path",
+    "SIGNATURE_OK": "L1.5 fast-path",
     "STAGE_1_START": "Stage 1",
     "STAGE_1_PASS": "Stage 1",
     "STAGE_2_START": "Stage 2",
@@ -432,7 +434,7 @@ def _extract_stage(outcome: str, reason: str | None) -> str:
     if "stage 1" in r or "regex" in r:
         return "Stage 1"
     if "not in permissions" in r or "suspended" in r or "canary" in r or "l1.5" in r:
-        return "L1.5"
+        return "L1.5 fast-path"
     return INTERMEDIATE_STAGE.get(outcome, "Unknown")
 
 
@@ -479,7 +481,7 @@ def _normalize_event(row: dict[str, Any]) -> AuditEvent:
     outcome = row.get("outcome") or ""
     reason = row.get("reason") or ""
     article, control = ARTICLE_BY_OUTCOME.get(outcome, (None, None))
-    _, model = _agent_metadata(row.get("agent_id") or "")
+    _, model = _agent_metadata(row.get("agent_id") or "", agent_model=row.get("agent_model"))
     return AuditEvent(
         event_id=row.get("hash") or "",
         timestamp=str(row.get("timestamp") or ""),
@@ -513,13 +515,20 @@ def _outcome_from_verdict(verdict: str) -> str:
     return verdict or "ALLOWED"
 
 
+def _recorded_model(agent_model: str | None) -> str:
+    model = (agent_model or "").strip()
+    return model or NOT_RECORDED_MODEL
+
+
 def _agent_metadata(agent_id: str, agent_type: str | None = None, agent_model: str | None = None) -> tuple[str | None, str | None]:
     agent_id = agent_id or ""
     if agent_id in AGENT_METADATA:
         framework, default_model = AGENT_METADATA[agent_id]
-        return framework, agent_model or default_model
+        if framework == "Hermes Agent":
+            return framework, _recorded_model(agent_model)
+        return framework, agent_model or default_model or NOT_RECORDED_MODEL
     if agent_type == "hermes-agent" or "hermes" in agent_id:
-        return "Hermes Agent", agent_model or "gpt-5.5 via openai-codex"
+        return "Hermes Agent", _recorded_model(agent_model)
     if "smolagents" in agent_id:
         return "ToolCallingAgent (smolagents)", agent_model or "gemma2:2b via Ollama"
     if "autogen" in agent_id:
@@ -1209,6 +1218,7 @@ async def get_sessions(
     # Collect hermes and audit-trail sessions independently so neither source starves the other.
     hermes_summaries: list[SessionSummary] = []
     hermes_groups: dict[str, dict[str, Any]] = {}
+    hermes_model_by_audit_hash: dict[str, str] = {}
     if _has_hermes_trace_schema(db_path):
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -1225,6 +1235,12 @@ async def get_sessions(
             hermes_query += " ORDER BY timestamp DESC LIMIT ?"
             params.append(per_agent_limit)
             hermes_rows = [dict(row) for row in conn.execute(hermes_query, params).fetchall()]
+        for hrow in hermes_rows:
+            ah = (hrow.get("audit_hash") or "").strip()
+            model = (hrow.get("agent_model") or "").strip()
+            if ah and model:
+                hermes_model_by_audit_hash[ah] = model
+
         for row in hermes_rows:
             agent = row.get("agent_id") or "hermes"
             raw_sid = row.get("session_id")
@@ -1303,8 +1319,9 @@ async def get_sessions(
                 and group["end_ts"] is not None
                 and ts - group["end_ts"] < timedelta(seconds=30)
             )
+            row_model = hermes_model_by_audit_hash.get(row.get("hash") or "") or hermes_model_by_audit_hash.get(row.get("prev_hash") or "")
             if not same_session:
-                framework, model = _agent_metadata(agent)
+                framework, model = _agent_metadata(agent, agent_model=row_model)
                 group = {
                     "session_id": f"{agent}-group-{key}",
                     "agent_id": agent,
@@ -1337,9 +1354,14 @@ async def get_sessions(
             group["allowed_count"] += 1 if outcome in ALLOW_OUTCOMES else 0
             group["hitl_count"] += 1 if outcome in HITL_OUTCOMES else 0
             group["duration_sum_ms"] += row_duration_ms
+            if row_model and group.get("agent_framework") == "Hermes Agent":
+                group["agent_model"] = row_model
             h = row.get("hash")
             if h:
                 group["_hashes"].add(h)
+            ph = row.get("prev_hash")
+            if ph:
+                group["_hashes"].add(ph)
 
         for group in audit_groups:
             start_ts = group.pop("start_ts")
@@ -2047,14 +2069,26 @@ async def get_hitl_events() -> list[AuditEvent]:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         _ensure_hitl_decision_table(conn)
-        rows = [dict(row) for row in conn.execute(
-            "SELECT a.hash, a.timestamp, a.agent_id, a.action, a.outcome, a.reason, a.prev_hash "
-            "FROM audit_trail a "
-            "LEFT JOIN dashboard_hitl_decisions d ON d.event_id = a.hash "
-            "WHERE a.outcome = 'HITL_REQUESTED' AND a.timestamp >= ? AND d.event_id IS NULL "
-            "ORDER BY a.timestamp DESC LIMIT 100",
-            (cutoff,),
-        ).fetchall()]
+        if _has_hermes_trace_schema(db_path):
+            query = (
+                "SELECT a.hash, a.timestamp, a.agent_id, a.action, a.outcome, a.reason, a.prev_hash, "
+                "h.agent_model AS agent_model "
+                "FROM audit_trail a "
+                "LEFT JOIN hermes_tool_traces h ON h.audit_hash = a.hash "
+                "LEFT JOIN dashboard_hitl_decisions d ON d.event_id = a.hash "
+                "WHERE a.outcome = 'HITL_REQUESTED' AND a.timestamp >= ? AND d.event_id IS NULL "
+                "ORDER BY a.timestamp DESC LIMIT 100"
+            )
+        else:
+            query = (
+                "SELECT a.hash, a.timestamp, a.agent_id, a.action, a.outcome, a.reason, a.prev_hash, "
+                "NULL AS agent_model "
+                "FROM audit_trail a "
+                "LEFT JOIN dashboard_hitl_decisions d ON d.event_id = a.hash "
+                "WHERE a.outcome = 'HITL_REQUESTED' AND a.timestamp >= ? AND d.event_id IS NULL "
+                "ORDER BY a.timestamp DESC LIMIT 100"
+            )
+        rows = [dict(row) for row in conn.execute(query, (cutoff,)).fetchall()]
         conn.commit()
     for row in rows:
         key = (row.get("prev_hash") or row.get("hash") or "")[:12]
