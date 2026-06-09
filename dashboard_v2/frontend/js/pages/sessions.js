@@ -148,12 +148,21 @@ const { createApp } = Vue;
     },
     parseJsonObject(raw) {
       if (typeof raw !== 'string') return null;
-      try {
-        const parsed = JSON.parse(raw);
-        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
-      } catch (_) {
-        return null;
+      let current = raw;
+      for (let depth = 0; depth < 3; depth += 1) {
+        if (typeof current !== 'string') return null;
+        const trimmed = current.trim();
+        if (!trimmed || !['{', '[', '"'].includes(trimmed[0])) return null;
+        try {
+          const parsed = JSON.parse(current);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+          if (typeof parsed !== 'string') return null;
+          current = parsed;
+        } catch (_) {
+          return null;
+        }
       }
+      return null;
     },
     formatModalInput(raw) {
       const parsed = this.parseJsonObject(raw);
