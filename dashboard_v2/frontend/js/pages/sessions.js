@@ -141,6 +141,43 @@ const { createApp } = Vue;
       const match = String(ev.reason || '').match(/reviewer:([^\n]*?)(?:\s+note:(.*))?$/); if (!match) return null;
       const r = (match[1] || '').trim(); const n = (match[2] || '').trim(); return r || n ? { reviewer: r || 'unknown', note: n } : null;
     },
+    stringifyModalValue(value) {
+      if (typeof value === 'string') return value;
+      if (value == null) return '';
+      return JSON.stringify(value, null, 2);
+    },
+    parseJsonObject(raw) {
+      if (typeof raw !== 'string') return null;
+      try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+      } catch (_) {
+        return null;
+      }
+    },
+    formatModalInput(raw) {
+      const parsed = this.parseJsonObject(raw);
+      if (!parsed) return raw;
+      for (const key of ['command', 'input', 'prompt', 'text']) {
+        if (Object.prototype.hasOwnProperty.call(parsed, key)) return this.stringifyModalValue(parsed[key]);
+      }
+      const entries = Object.entries(parsed);
+      if (entries.length === 1 && typeof entries[0][1] === 'string') return entries[0][1];
+      return JSON.stringify(parsed, null, 2);
+    },
+    formatModalOutput(raw) {
+      const parsed = this.parseJsonObject(raw);
+      if (!parsed) return raw;
+      const hasOutput = Object.prototype.hasOwnProperty.call(parsed, 'output');
+      const hasError = Object.prototype.hasOwnProperty.call(parsed, 'error');
+      const hasExitCode = Object.prototype.hasOwnProperty.call(parsed, 'exit_code');
+      if (!hasOutput && !hasError && !hasExitCode) return raw;
+      const parts = [];
+      if (hasOutput) parts.push(this.stringifyModalValue(parsed.output));
+      if (hasError && parsed.error != null && String(parsed.error).trim().length > 0) parts.push(`error: ${this.stringifyModalValue(parsed.error)}`);
+      if (hasExitCode && Number(parsed.exit_code) !== 0) parts.push(`exit_code: ${parsed.exit_code}`);
+      return parts.join('\n');
+    },
     isTerminalEvent(ev) { return ['deny', 'allow', 'hitl'].includes(this.decisionTone(ev)); },
     isBlockedEvent(ev) { return this.decisionTone(ev) === 'deny'; },
     eventDetailsButtonClass(ev) {
