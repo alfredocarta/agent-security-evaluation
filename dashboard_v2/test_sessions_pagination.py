@@ -644,6 +644,54 @@ def test_hermes_trace_explanation_falls_back_when_no_audit_chain(tmp_path, monke
     assert explanation.pipeline[0].terminal is True
 
 
+
+def test_hermes_trace_explanation_uses_exact_row_when_trace_id_collides(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_test_db(db_path)
+    conn = sqlite3.connect(db_path)
+
+    rows = [
+        ("old-start", "2026-06-09 12:00:00", "INTERCEPTOR_START", "Interceptor invoked", None),
+        ("old-clear", "2026-06-09 12:00:01", "HEURISTIC_CLEAR", "Cleared old", "old-start"),
+        ("new-start", "2026-06-09 12:05:00", "INTERCEPTOR_START", "Interceptor invoked", "old-clear"),
+        ("new-clear", "2026-06-09 12:05:01", "HEURISTIC_CLEAR", "Cleared new", "new-start"),
+    ]
+    for h, ts, outcome, reason, prev in rows:
+        conn.execute(
+            "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+            "VALUES (?, ?, 'hermes-live-agent', 'shell', ?, ?, ?)",
+            (h, ts, outcome, reason, prev),
+        )
+
+    for row_id, ts, audit_hash, reason in [
+        ("h-collide-old", "2026-06-09T12:00:01", "old-clear", "Cleared old"),
+        ("h-collide-new", "2026-06-09T12:05:01", "new-clear", "Cleared new"),
+    ]:
+        conn.execute(
+            "INSERT INTO hermes_tool_traces "
+            "(id, timestamp, agent_id, agent_type, agent_model, session_id, hermes_tool_name, "
+            "asf_tool_name, args_hash, args_preview, output_preview, verdict, outcome, reason, stage, asf_latency_ms, "
+            "tool_duration_ms, trace_id, audit_hash, created_at) "
+            "VALUES (?, ?, 'hermes-live-agent', 'Hermes Agent', 'gpt-5.5', 'sess-collide', "
+            "'terminal', 'shell', 'same-args', '{\"command\": \"printf same\"}', '{\"stdout\": \"ok\"}', "
+            "'ALLOW', 'ALLOWED', ?, NULL, 1, 2, 'shared-trace-id', ?, ?)",
+            (row_id, ts, reason, audit_hash, ts),
+        )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    explanation = asyncio.run(db.get_event_explanation("h-collide-new"))
+
+    outcomes = [stage.outcome for stage in explanation.pipeline]
+    assert outcomes == ["INTERCEPTOR_START", "HEURISTIC_CLEAR"]
+    assert [stage.terminal for stage in explanation.pipeline].count(True) == 1
+    assert explanation.final_reason == "Cleared new"
+
+    explanation_by_audit_hash = asyncio.run(db.get_event_explanation("new-clear"))
+    assert [stage.outcome for stage in explanation_by_audit_hash.pipeline] == ["INTERCEPTOR_START", "HEURISTIC_CLEAR"]
+    assert [stage.terminal for stage in explanation_by_audit_hash.pipeline].count(True) == 1
+
 def test_get_sessions_dedupes_hermes_trace_against_audit_session(tmp_path, monkeypatch):
     db_path = tmp_path / "asf_test.db"
     conn = sqlite3.connect(db_path)

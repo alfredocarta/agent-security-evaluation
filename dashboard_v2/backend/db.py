@@ -768,6 +768,17 @@ def _preview_is_truncated(value: str | None) -> bool:
     return bool(value and "[truncated " in value)
 
 
+def _single_terminal_pipeline(stages: list[PipelineStage]) -> list[PipelineStage]:
+    terminal_indexes = [idx for idx, stage in enumerate(stages) if stage.terminal]
+    if len(terminal_indexes) <= 1:
+        return stages
+    last_terminal = terminal_indexes[-1]
+    for idx in terminal_indexes[:-1]:
+        stages[idx].terminal = False
+    stages[last_terminal].terminal = True
+    return stages
+
+
 def _event_explanation_from_pipeline(
     event_id: str,
     pipeline_events: list[AuditEvent],
@@ -804,7 +815,7 @@ def _event_explanation_from_pipeline(
         final_reason=final.reason or "No reason recorded.",
         security_model=final.security_model,
         latency_ms=final.latency_ms,
-        pipeline=_expand_inferred_pipeline_stages(pipeline_events) or [_stage_from_event(final)],
+        pipeline=_single_terminal_pipeline(_expand_inferred_pipeline_stages(pipeline_events) or [_stage_from_event(final)]),
     )
 
 
@@ -850,13 +861,21 @@ def _audit_chain_for_event(conn: sqlite3.Connection, event_id: str) -> list[dict
 
 
 def _hermes_rows_for_event(conn: sqlite3.Connection, event_id: str) -> list[dict[str, Any]]:
-    anchor = conn.execute(
+    select_cols = (
         "SELECT id, timestamp, agent_id, agent_type, agent_model, session_id, task_id, tool_call_id, "
         "hermes_tool_name, asf_tool_name, args_preview, output_preview, verdict, outcome, reason, stage, confidence, "
         "asf_latency_ms, tool_duration_ms, trace_id, audit_hash "
-        "FROM hermes_tool_traces WHERE id = ? OR audit_hash = ? OR trace_id = ? LIMIT 1",
-        (event_id, event_id, event_id),
-    ).fetchone()
+        "FROM hermes_tool_traces "
+    )
+
+    # Per-event drill-down must explain the clicked call only. id and audit_hash are unique
+    # per persisted Hermes call, while older trace_id values can collide for repeated
+    # identical commands. Prefer exact unique matches and do not expand them by trace_id.
+    exact = conn.execute(select_cols + "WHERE id = ? OR audit_hash = ? LIMIT 1", (event_id, event_id)).fetchone()
+    if exact is not None:
+        return [dict(exact)]
+
+    anchor = conn.execute(select_cols + "WHERE trace_id = ? LIMIT 1", (event_id,)).fetchone()
     if anchor is None:
         return []
     anchor_dict = dict(anchor)
@@ -881,10 +900,7 @@ def _hermes_rows_for_event(conn: sqlite3.Connection, event_id: str) -> list[dict
             clauses.append("session_id = ?")
             params.append(session_id)
     rows = [dict(row) for row in conn.execute(
-        "SELECT id, timestamp, agent_id, agent_type, agent_model, session_id, task_id, tool_call_id, "
-        "hermes_tool_name, asf_tool_name, args_preview, output_preview, verdict, outcome, reason, stage, confidence, "
-        "asf_latency_ms, tool_duration_ms, trace_id, audit_hash "
-        "FROM hermes_tool_traces WHERE " + " OR ".join(clauses) + " ORDER BY timestamp ASC",
+        select_cols + "WHERE " + " OR ".join(clauses) + " ORDER BY timestamp ASC",
         params,
     ).fetchall()]
     return rows or [anchor_dict]
