@@ -92,32 +92,41 @@ window.ASF = (() => {
     const s = String(technical).toLowerCase();
     let label = 'ASF check';
     let shortTech = technical;
+    let isFallback = true;
     if (s.includes('output guard')) {
       label = 'Output check';
       shortTech = 'Output guard';
+      isFallback = false;
     } else if (s.includes('stage 3') || s.includes('onnx') || s.includes('llm')) {
-      label = 'AI review';
+      label = 'LLM review';
       shortTech = s.includes('onnx') ? 'Stage 3 ONNX Prompt Guard' : 'Stage 3 LLM';
+      isFallback = false;
     } else if ((s.includes('stage 2.5') || s.includes('2.5')) && s.includes('prompt guard')) {
-      label = 'AI check';
+      label = 'Injection guard';
       shortTech = 'Stage 2.5b Prompt Guard';
+      isFallback = false;
     } else if (s.includes('stage 2.5') || s.includes('deberta')) {
       label = 'Content analysis';
       shortTech = 'Stage 2.5 DeBERTa';
+      isFallback = false;
     } else if (s.includes('stage 2') || s.includes('tf-idf') || s.includes('random forest')) {
       label = 'Statistical check';
       shortTech = 'Stage 2 TF-IDF + Random Forest';
+      isFallback = false;
     } else if (s.includes('stage 1') || s.includes('regex')) {
       label = 'Known patterns';
       shortTech = 'Stage 1 regex';
+      isFallback = false;
     } else if (s.includes('l1.5') || s.includes('fast-path') || s.includes('heuristic')) {
       label = 'Quick screening';
       shortTech = 'L1.5 fast-path';
+      isFallback = false;
     } else if (s.includes('policy') || s.includes('governance')) {
       label = 'Policy check';
       shortTech = technical;
+      isFallback = false;
     }
-    return { label, technical, shortTech };
+    return { label, technical, shortTech, isFallback };
   }
 
   function meaningfulPipeline(pipeline) {
@@ -126,7 +135,9 @@ window.ASF = (() => {
       const outcome = String(s?.outcome || '').toUpperCase();
       return outcome !== 'INTERCEPTOR_START' && !outcome.endsWith('_START');
     });
-    return meaningful.length ? meaningful : full;
+    const result = meaningful.length ? meaningful : full;
+    const withoutFallback = result.filter(s => !stageDisplay(s?.stage).isFallback);
+    return withoutFallback.length ? withoutFallback : result;
   }
 
   const methods = {
