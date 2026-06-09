@@ -435,6 +435,8 @@ def _extract_stage(outcome: str, reason: str | None) -> str:
         return "Stage 1"
     if "not in permissions" in r or "suspended" in r or "canary" in r or "l1.5" in r:
         return "L1.5 fast-path"
+    if "allowlist" in r or "policy gate" in r or "governance" in r:
+        return "Policy gate"
     return INTERMEDIATE_STAGE.get(outcome, "Unknown")
 
 
