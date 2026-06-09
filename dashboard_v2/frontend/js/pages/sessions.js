@@ -221,7 +221,8 @@ const { createApp } = Vue;
       const hasExitCode = Object.prototype.hasOwnProperty.call(parsed, 'exit_code');
       const hasStdout = Object.prototype.hasOwnProperty.call(parsed, 'stdout');
       const hasStderr = Object.prototype.hasOwnProperty.call(parsed, 'stderr');
-      if (!hasOutput && !hasError && !hasExitCode && !hasStdout && !hasStderr) return raw;
+      const hasContent = typeof parsed.content === 'string';
+      const hasFileContent = parsed.file && typeof parsed.file === 'object' && typeof parsed.file.content === 'string';
       const parts = [];
       if (hasOutput) {
         parts.push(this.stringifyModalValue(parsed.output));
@@ -230,9 +231,16 @@ const { createApp } = Vue;
         const stderr = hasStderr ? this.stringifyModalValue(parsed.stderr) : '';
         if (stdout.trim().length > 0) parts.push(stdout);
         if (stderr.trim().length > 0) parts.push(`stderr: ${stderr}`);
-        if (parts.length === 0) return raw;
+      } else if (hasContent) {
+        parts.push(parsed.content);
+      } else if (hasFileContent) {
+        parts.push(parsed.file.content);
+      } else if (hasError && parsed.error != null && String(parsed.error).trim().length > 0) {
+        parts.push(`error: ${this.stringifyModalValue(parsed.error)}`);
+      } else {
+        parts.push(JSON.stringify(parsed, null, 2));
       }
-      if (hasError && parsed.error != null && String(parsed.error).trim().length > 0) parts.push(`error: ${this.stringifyModalValue(parsed.error)}`);
+      if (hasError && parts.length > 0 && !String(parts[0]).startsWith('error: ') && parsed.error != null && String(parsed.error).trim().length > 0) parts.push(`error: ${this.stringifyModalValue(parsed.error)}`);
       if (hasExitCode && Number(parsed.exit_code) !== 0) parts.push(`exit_code: ${parsed.exit_code}`);
       return parts.join('\n');
     },
