@@ -174,9 +174,48 @@ const { createApp } = Vue;
       if (entries.length === 1 && typeof entries[0][1] === 'string') return entries[0][1];
       return JSON.stringify(parsed, null, 2);
     },
+    unescapeLegacyEnvelopeText(value) {
+      return String(value)
+        .replace(/\\+n/g, '\n')
+        .replace(/\\+t/g, '\t')
+        .replace(/\\+"/g, '"')
+        .replace(/\\\\/g, '\\');
+    },
+    legacyTruncatedEnvelopeOutput(raw) {
+      if (typeof raw !== 'string') return raw;
+      let working = raw.trimStart();
+      if (working.startsWith('"')) working = working.slice(1);
+      if (working.startsWith('\\"')) working = working.slice(2);
+
+      const prefixes = [
+        '{"output": "',
+        '{"output":"',
+        '{"stdout": "',
+        '{"stdout":"',
+        '{\\"output\\": \\"',
+        '{\\"output\\":\\"',
+        '{\\"stdout\\": \\"',
+        '{\\"stdout\\":\\"',
+      ];
+      const prefix = prefixes.find(p => working.startsWith(p));
+      if (!prefix) return raw;
+
+      let text = working.slice(prefix.length);
+      const markerMatch = text.match(/(…?\[truncated \d+ bytes\])\s*$/);
+      const marker = markerMatch ? markerMatch[1] : '';
+      if (marker) text = text.slice(0, markerMatch.index);
+
+      text = text
+        .replace(/(?:\\")?"?\}\s*$/, '')
+        .replace(/(?:\\")?"?\s*$/, '');
+      if (marker) text = text.replace(/\\+$/, '');
+
+      if (!marker && text.length === working.length - prefix.length) return raw;
+      return `${this.unescapeLegacyEnvelopeText(text)}${marker}`;
+    },
     formatModalOutput(raw) {
       const parsed = this.parseJsonObject(raw);
-      if (!parsed) return raw;
+      if (!parsed) return this.legacyTruncatedEnvelopeOutput(raw);
       const hasOutput = Object.prototype.hasOwnProperty.call(parsed, 'output');
       const hasError = Object.prototype.hasOwnProperty.call(parsed, 'error');
       const hasExitCode = Object.prototype.hasOwnProperty.call(parsed, 'exit_code');
