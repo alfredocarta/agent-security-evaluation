@@ -7,7 +7,7 @@ const { createApp } = Vue;
     sessions: [], agents: [], selectedAgent: '', sessionEvents: [], sessionPageCache: {}, sessionHasMore: {},
     sessionLoadingMore: false, sessionPageSize: 20, sessionPage: 0, sessionsPage: 0, sessionsPageSize: 10,
     sessionsPageCache: {}, sessionsHasMore: false, sessionsLoading: false, expandedSession: null,
-    loadingSession: false, expandedReasons: new Set(), expandedEventDetails: new Set(), eventExplanations: {}, loadingEventDetails: new Set(), selectedPipelineStages: {}, sessionSearch: '',
+    loadingSession: false, expandedReasons: new Set(), expandedEventDetails: new Set(), activeEventDetailsId: null, eventExplanations: {}, loadingEventDetails: new Set(), selectedPipelineStages: {}, sessionSearch: '',
     lastRefresh: '', refreshLabel: '5s', footerText: 'ASF v2', dataAsOf: null, dbSource: '',
   }),
   computed: {
@@ -48,10 +48,17 @@ const { createApp } = Vue;
     },
     expandedSessionTotalPages() { return Math.max(1, Math.ceil(this.expandedSessionTotalEvents / this.sessionPageSize)); },
     paginatedSessionEvents() { return (this.sessionEvents || []).slice(0, this.sessionPageSize); },
+    activeEventDetails() { return (this.sessionEvents || []).find(ev => ev.event_id === this.activeEventDetailsId) || null; },
     maxSessionDuration() { return this.sessions.length ? (Math.max(...this.sessions.map(s => s.duration_ms || 0)) || 1) : 1; },
   },
-  watch: { sessionSearch() { this.sessionsPage = 0; this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.expandedEventDetails = new Set(); } },
-  mounted() { this.refresh(); setInterval(this.refresh, 5000); },
+  watch: { sessionSearch() { this.sessionsPage = 0; this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.closeEventDetails(); } },
+  mounted() {
+    this.refresh();
+    setInterval(this.refresh, 5000);
+    this.onEventDetailsKeydown = event => { if (event.key === 'Escape') this.closeEventDetails(); };
+    window.addEventListener('keydown', this.onEventDetailsKeydown);
+  },
+  beforeUnmount() { if (this.onEventDetailsKeydown) window.removeEventListener('keydown', this.onEventDetailsKeydown); },
   methods: {
     ...ASF.methods,
     async refresh() {
@@ -70,7 +77,7 @@ const { createApp } = Vue;
       const cached = this.sessionsPageCache[pageKey];
       if (!force && cached) {
         this.sessionsPage = safePage; this.sessions = cached.sessions; this.sessionsHasMore = cached.hasMore;
-        if (collapse) { this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.expandedEventDetails = new Set(); }
+        if (collapse) { this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.closeEventDetails(); }
         this.sessionsLoading = false; this.footerText = `${this.sessions.length} sessions · ASF v2`; return;
       }
       this.sessionsLoading = true;
@@ -85,18 +92,18 @@ const { createApp } = Vue;
         this.sessionsPageCache = { ...this.sessionsPageCache, [pageKey]: pageData };
         this.sessionsPage = safePage; this.sessions = visibleRows; this.sessionsHasMore = pageData.hasMore;
         this.footerText = `${this.sessions.length} sessions · ASF v2`;
-        if (collapse) { this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.expandedEventDetails = new Set(); }
+        if (collapse) { this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.closeEventDetails(); }
       } finally { this.sessionsLoading = false; }
     },
     async nextSessionsPage() { if (this.sessionsHasMore && !this.sessionsLoading) await this.loadSessionsPage(this.sessionsPage + 1); },
     async prevSessionsPage() { if (this.sessionsPage !== 0 && !this.sessionsLoading) await this.loadSessionsPage(this.sessionsPage - 1); },
     async onSessionsPageSizeChange() {
       this.sessionsPageSize = Number(this.sessionsPageSize) || 10; this.sessionsPage = 0; this.sessionsPageCache = {}; this.sessionsHasMore = false;
-      this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.expandedEventDetails = new Set();
+      this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.closeEventDetails();
       await this.loadSessionsPage(0, { force: true });
     },
     async onAgentChange() {
-      this.expandedSession = null; this.sessionEvents = []; this.expandedEventDetails = new Set(); this.sessionPageCache = {};
+      this.expandedSession = null; this.sessionEvents = []; this.closeEventDetails(); this.sessionPageCache = {};
       this.sessionHasMore = {}; this.sessionsPageCache = {}; this.sessionsHasMore = false; this.sessionsLoading = false;
       this.sessionPage = 0; this.sessionsPage = 0; await this.refresh();
     },
@@ -107,8 +114,8 @@ const { createApp } = Vue;
         .catch(() => {});
     },
     async toggleSession(sessionId) {
-      if (this.expandedSession === sessionId) { this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.expandedReasons = new Set(); this.expandedEventDetails = new Set(); return; }
-      this.expandedSession = sessionId; this.sessionPage = 0; this.expandedReasons = new Set(); this.expandedEventDetails = new Set(); await this.loadSession(sessionId, 0);
+      if (this.expandedSession === sessionId) { this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.expandedReasons = new Set(); this.closeEventDetails(); return; }
+      this.expandedSession = sessionId; this.sessionPage = 0; this.expandedReasons = new Set(); this.closeEventDetails(); await this.loadSession(sessionId, 0);
     },
     async loadSession(sessionId, page = this.sessionPage) {
       const pageKey = `${sessionId}:${page}`; const cached = this.sessionPageCache[pageKey];
@@ -176,15 +183,17 @@ const { createApp } = Vue;
     },
     async toggleEventDetails(ev) {
       if (!ev?.event_id) return;
-      const s = new Set(this.expandedEventDetails);
-      if (s.has(ev.event_id)) {
-        s.delete(ev.event_id);
-        this.expandedEventDetails = s;
+      if (this.activeEventDetailsId === ev.event_id) {
+        this.closeEventDetails();
         return;
       }
+      this.activeEventDetailsId = ev.event_id;
+      this.expandedEventDetails = new Set([ev.event_id]);
       if (!this.eventExplanations[ev.event_id]) await this.loadEventExplanation(ev);
-      s.add(ev.event_id);
-      this.expandedEventDetails = s;
+    },
+    closeEventDetails() {
+      this.activeEventDetailsId = null;
+      this.expandedEventDetails = new Set();
     },
     async loadEventExplanation(ev) {
       if (!ev?.event_id || this.loadingEventDetails.has(ev.event_id)) return;
@@ -230,7 +239,7 @@ const { createApp } = Vue;
       if (v == null || Number.isNaN(Number(v))) {
         const name = String(stage?.stage || '').toLowerCase();
         if (name.includes('l1.5') || name.includes('policy') || name.includes('regex')) return 'rule-based';
-        return '—';
+        return '-';
       }
       const n = Number(v);
       return n <= 1 ? `${(n * 100).toFixed(0)}%` : `${n.toFixed(1)}%`;
@@ -244,7 +253,7 @@ const { createApp } = Vue;
       return stages.filter(x => x && (x.stage || x.outcome || x.confidence != null))
         .slice().sort((a, b) => (this.parseUtcDate(a.timestamp)?.getTime() || 0) - (this.parseUtcDate(b.timestamp)?.getTime() || 0));
     },
-    formatConfidence(v) { if (v == null || Number.isNaN(Number(v))) return '—'; const n = Number(v); return n <= 1 ? `${(100 * n).toFixed(0)}%` : `${n.toFixed(1)}%`; },
+    formatConfidence(v) { if (v == null || Number.isNaN(Number(v))) return '-'; const n = Number(v); return n <= 1 ? `${(100 * n).toFixed(0)}%` : `${n.toFixed(1)}%`; },
   },
 }).mount('#app');
 })();
