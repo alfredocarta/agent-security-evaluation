@@ -862,3 +862,226 @@ def test_hitl_events_use_recorded_hermes_agent_model(tmp_path, monkeypatch):
     event = next(ev for ev in pending if ev.event_id == "hitl-qwen")
 
     assert event.agent_model == "qwen 3.5 via openrouter"
+
+
+def test_hermes_events_with_same_task_id_group_into_one_session_despite_gap(tmp_path, monkeypatch):
+    """Hermes events sharing task_id must group into ONE session even across >30s gaps."""
+    db_path = tmp_path / "asf_test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE audit_trail ("
+        "hash TEXT PRIMARY KEY, timestamp TEXT, agent_id TEXT, action TEXT, "
+        "outcome TEXT, reason TEXT, prev_hash TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE hermes_tool_traces ("
+        "id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hermes', "
+        "agent_id TEXT NOT NULL, agent_type TEXT, agent_model TEXT, session_id TEXT, task_id TEXT, "
+        "tool_call_id TEXT, hermes_tool_name TEXT NOT NULL, asf_tool_name TEXT NOT NULL, "
+        "args_hash TEXT NOT NULL, args_preview TEXT, output_hash TEXT, output_preview TEXT, "
+        "verdict TEXT, outcome TEXT, reason TEXT, stage TEXT, confidence REAL, "
+        "asf_latency_ms INTEGER, tool_duration_ms INTEGER, side_effect_verified INTEGER DEFAULT 0, "
+        "side_effect_occurred INTEGER, expected_label TEXT, human_label TEXT, scenario_id TEXT, "
+        "threat_id TEXT, trace_id TEXT, audit_hash TEXT, created_at TEXT NOT NULL)"
+    )
+    
+    # Create Hermes events with same task_id but >30s gap between them
+    base_ts = datetime(2026, 6, 10, 10, 0, 0)
+    for i, seconds_offset in enumerate([0, 45, 90]):  # 45s and 90s gaps > 30s threshold
+        ts = (base_ts + timedelta(seconds=seconds_offset)).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            "INSERT INTO hermes_tool_traces "
+            "(id, timestamp, agent_id, agent_type, agent_model, task_id, hermes_tool_name, "
+            "asf_tool_name, args_hash, verdict, outcome, reason, stage, asf_latency_ms, "
+            "tool_duration_ms, trace_id, audit_hash, created_at) "
+            "VALUES (?, ?, 'hermes-live-agent', 'Hermes Agent', 'gpt-5.5', 'same-task-123', "
+            "'terminal', 'shell', 'args', 'ALLOW', 'ALLOWED', 'ok', 'L1.5', 10, 20, ?, ?, ?)",
+            (f"h{i:03d}", ts, f"trace-{i:03d}", f"audit-{i:03d}", ts),
+        )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    sessions = asyncio.run(db.get_sessions(limit=20, offset=0, agent_id="hermes-live-agent"))
+
+    # All events with same task_id should be in ONE session, not split by 30s gap
+    assert len(sessions) == 1
+    assert "task-same-task-123" in sessions[0].session_id
+    assert sessions[0].total_events == 3
+
+
+def test_get_session_events_returns_events_for_hermes_task_session(tmp_path, monkeypatch):
+    """Detail view must resolve a real {agent}-task-{id} session even though the
+    agent id (hermes-live-agent) contains hyphens."""
+    db_path = tmp_path / "asf_test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE audit_trail ("
+        "hash TEXT PRIMARY KEY, timestamp TEXT, agent_id TEXT, action TEXT, "
+        "outcome TEXT, reason TEXT, prev_hash TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE hermes_tool_traces ("
+        "id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hermes', "
+        "agent_id TEXT NOT NULL, agent_type TEXT, agent_model TEXT, session_id TEXT, task_id TEXT, "
+        "tool_call_id TEXT, hermes_tool_name TEXT NOT NULL, asf_tool_name TEXT NOT NULL, "
+        "args_hash TEXT NOT NULL, args_preview TEXT, output_hash TEXT, output_preview TEXT, "
+        "verdict TEXT, outcome TEXT, reason TEXT, stage TEXT, confidence REAL, "
+        "asf_latency_ms INTEGER, tool_duration_ms INTEGER, side_effect_verified INTEGER DEFAULT 0, "
+        "side_effect_occurred INTEGER, expected_label TEXT, human_label TEXT, scenario_id TEXT, "
+        "threat_id TEXT, trace_id TEXT, audit_hash TEXT, created_at TEXT NOT NULL)"
+    )
+    base_ts = datetime(2026, 6, 10, 10, 0, 0)
+    for i, off in enumerate([0, 45, 90]):
+        ts = (base_ts + timedelta(seconds=off)).strftime("%Y-%m-%d %H:%M:%S")
+        audit_hash = f"auditfull-{i:03d}"
+        conn.execute(
+            "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+            "VALUES (?, ?, 'hermes-live-agent', 'shell', 'ALLOWED', 'ok', ?)",
+            (audit_hash, ts, f"prev-{i:03d}"),
+        )
+        conn.execute(
+            "INSERT INTO hermes_tool_traces "
+            "(id, timestamp, agent_id, agent_type, agent_model, task_id, hermes_tool_name, "
+            "asf_tool_name, args_hash, verdict, outcome, reason, stage, asf_latency_ms, "
+            "tool_duration_ms, trace_id, audit_hash, created_at) "
+            "VALUES (?, ?, 'hermes-live-agent', 'Hermes Agent', 'gpt-5.5', 'detail-task-9', "
+            "'terminal', 'shell', 'args', 'ALLOW', 'ALLOWED', 'ok', 'L1.5', 10, 20, ?, ?, ?)",
+            (f"h{i:03d}", ts, f"trace-{i:03d}", audit_hash, ts),
+        )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    events = asyncio.run(db.get_session_events("hermes-live-agent-task-detail-task-9", limit=20, offset=0))
+    assert len(events) == 3
+
+
+def test_claude_events_with_same_session_id_group_into_one_session(tmp_path, monkeypatch):
+    """Claude events sharing session_id (UUID) must group into one session."""
+    db_path = tmp_path / "asf_test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE audit_trail ("
+        "hash TEXT PRIMARY KEY, timestamp TEXT, agent_id TEXT, action TEXT, "
+        "outcome TEXT, reason TEXT, prev_hash TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE claude_tool_traces ("
+        "id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, agent_id TEXT NOT NULL, agent_model TEXT, "
+        "session_id TEXT, transcript_path TEXT, tool_call_id TEXT, claude_tool_name TEXT, "
+        "asf_tool_name TEXT NOT NULL, args_preview TEXT, output_preview TEXT, verdict TEXT, "
+        "outcome TEXT, reason TEXT, trace_id TEXT, audit_hash TEXT, created_at TEXT NOT NULL)"
+    )
+    
+    # Create Claude events with same session_id (UUID) but >30s gaps
+    session_uuid = "a3ff43fa-1234-5678-9abc-def012345678"
+    base_ts = datetime(2026, 6, 10, 10, 0, 0)
+    for i, seconds_offset in enumerate([0, 60, 120]):  # 60s and 120s gaps
+        ts = (base_ts + timedelta(seconds=seconds_offset)).strftime("%Y-%m-%d %H:%M:%S")
+        audit_hash = f"audit-claude-{i:03d}"
+        conn.execute(
+            "INSERT INTO audit_trail "
+            "(hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+            "VALUES (?, ?, 'claude-code-agent', 'shell', 'ALLOWED', 'ok', ?)",
+            (audit_hash, ts, f"prev-{i:03d}"),
+        )
+        conn.execute(
+            "INSERT INTO claude_tool_traces "
+            "(id, timestamp, agent_id, agent_model, session_id, tool_call_id, claude_tool_name, "
+            "asf_tool_name, args_preview, verdict, outcome, reason, trace_id, audit_hash, created_at) "
+            "VALUES (?, ?, 'claude-code-agent', 'claude-sonnet-4-6', ?, 'call-?', 'shell', 'shell', "
+            "'args', 'ALLOW', 'ALLOWED', 'ok', ?, ?, ?)",
+            (f"claude-{i:03d}", ts, session_uuid, f"trace-{i:03d}", audit_hash, ts),
+        )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    sessions = asyncio.run(db.get_sessions(limit=20, offset=0, agent_id="claude-code-agent"))
+
+    # All events with same session_id should be in ONE session
+    assert len(sessions) == 1
+    assert f"session-{session_uuid}" in sessions[0].session_id
+    assert sessions[0].total_events == 3
+
+
+def test_events_without_real_ids_fall_back_to_time_gap_grouping(tmp_path, monkeypatch):
+    """Events with no session_id/task_id must fall back to 30-second time-gap heuristic."""
+    db_path = tmp_path / "asf_test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE audit_trail ("
+        "hash TEXT PRIMARY KEY, timestamp TEXT, agent_id TEXT, action TEXT, "
+        "outcome TEXT, reason TEXT, prev_hash TEXT)"
+    )
+    
+    # Create events: first two within 30s (same session), third after 60s gap (new session)
+    base_ts = datetime(2026, 6, 10, 10, 0, 0)
+    for i, seconds_offset in enumerate([0, 20, 60]):  # 20s gap (same), 60s gap (new session)
+        ts = (base_ts + timedelta(seconds=seconds_offset)).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            "INSERT INTO audit_trail "
+            "(hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+            "VALUES (?, ?, 'test-agent', 'shell', 'ALLOWED', 'ok', ?)",
+            (f"hash-{i:03d}", ts, f"prev-{i:03d}"),
+        )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    sessions = asyncio.run(db.get_sessions(limit=20, offset=0, agent_id="test-agent"))
+
+    # Should have 2 sessions: first two events in one, third in another
+    assert len(sessions) == 2
+    # First session should have 2 events (0s and 20s)
+    assert sessions[0].total_events == 1  # Most recent first (third event at 60s)
+    assert sessions[1].total_events == 2  # First two events (0s and 20s)
+
+
+def test_different_task_ids_stay_in_separate_sessions(tmp_path, monkeypatch):
+    """Events with different task_ids must stay in separate sessions."""
+    db_path = tmp_path / "asf_test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE audit_trail ("
+        "hash TEXT PRIMARY KEY, timestamp TEXT, agent_id TEXT, action TEXT, "
+        "outcome TEXT, reason TEXT, prev_hash TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE hermes_tool_traces ("
+        "id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hermes', "
+        "agent_id TEXT NOT NULL, agent_type TEXT, agent_model TEXT, session_id TEXT, task_id TEXT, "
+        "tool_call_id TEXT, hermes_tool_name TEXT NOT NULL, asf_tool_name TEXT NOT NULL, "
+        "args_hash TEXT NOT NULL, args_preview TEXT, output_hash TEXT, output_preview TEXT, "
+        "verdict TEXT, outcome TEXT, reason TEXT, stage TEXT, confidence REAL, "
+        "asf_latency_ms INTEGER, tool_duration_ms INTEGER, side_effect_verified INTEGER DEFAULT 0, "
+        "side_effect_occurred INTEGER, expected_label TEXT, human_label TEXT, scenario_id TEXT, "
+        "threat_id TEXT, trace_id TEXT, audit_hash TEXT, created_at TEXT NOT NULL)"
+    )
+    
+    # Create two separate runs with different task_ids at the same time
+    base_ts = datetime(2026, 6, 10, 10, 0, 0)
+    ts = base_ts.strftime("%Y-%m-%d %H:%M:%S")
+    
+    for task_id in ["task-aaa", "task-bbb"]:
+        conn.execute(
+            "INSERT INTO hermes_tool_traces "
+            "(id, timestamp, agent_id, agent_type, agent_model, task_id, hermes_tool_name, "
+            "asf_tool_name, args_hash, verdict, outcome, reason, stage, asf_latency_ms, "
+            "tool_duration_ms, trace_id, audit_hash, created_at) "
+            "VALUES (?, ?, 'hermes-live-agent', 'Hermes Agent', 'gpt-5.5', ?, "
+            "'terminal', 'shell', 'args', 'ALLOW', 'ALLOWED', 'ok', 'L1.5', 10, 20, ?, ?, ?)",
+            (f"h-{task_id[-3:]}", ts, task_id, f"trace-{task_id[-3:]}", f"audit-{task_id[-3:]}", ts),
+        )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    sessions = asyncio.run(db.get_sessions(limit=20, offset=0, agent_id="hermes-live-agent"))
+
+    # Should have 2 separate sessions, one per task_id
+    assert len(sessions) == 2
+    session_ids = {s.session_id for s in sessions}
+    assert any("task-aaa" in sid for sid in session_ids)
+    assert any("task-bbb" in sid for sid in session_ids)

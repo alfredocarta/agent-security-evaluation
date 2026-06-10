@@ -314,15 +314,51 @@ def _dashboard_cache_is_stale(db_path: Path, cache: dict[str, Any]) -> bool:
 
 
 def _sessionize(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group events into sessions using real identifiers when available, else time-gap heuristic.
+    
+    Session key priority:
+    - Claude events (claude_tool_traces): session_id (stable UUID per conversation)
+    - Hermes events (hermes_tool_traces): session_id if non-empty, else task_id
+    - Fallback: 30-second time-gap heuristic for events with no real identifier
+    
+    Returns rows with session_id assigned for downstream grouping.
+    """
     rows = sorted(rows, key=lambda row: row.get("timestamp") or "")
     last_agent = ""
     last_ts: datetime | None = None
     counter = 0
     current_session = ""
+    last_real_session_key: str | None = None
 
     for row in rows:
         agent_id = row.get("agent_id") or "unknown-agent"
         ts = _parse_timestamp(row.get("timestamp"))
+        
+        # Check for real session identifiers
+        real_session_id = row.get("session_id")
+        task_id = row.get("task_id")
+        
+        # Determine session key: prefer real identifiers, fall back to time-gap
+        if real_session_id:
+            # Real session_id present (e.g., Claude UUID or Hermes session_id)
+            session_key = f"{agent_id}-session-{real_session_id}"
+            last_real_session_key = session_key
+            row["session_id"] = session_key
+            row["trace_id"] = None
+            last_agent = agent_id
+            last_ts = ts
+            continue
+        elif task_id:
+            # Hermes task_id as session identifier
+            session_key = f"{agent_id}-task-{task_id}"
+            last_real_session_key = session_key
+            row["session_id"] = session_key
+            row["trace_id"] = None
+            last_agent = agent_id
+            last_ts = ts
+            continue
+        
+        # No real identifier: fall back to 30-second time-gap heuristic
         same_session = (
             bool(current_session)
             and agent_id == last_agent
@@ -332,7 +368,7 @@ def _sessionize(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         )
         if not same_session:
             counter += 1
-            current_session = f"{agent_id}-session-{counter:04d}"
+            current_session = f"{agent_id}-group-{counter:04d}"
         row["session_id"] = current_session
         row["trace_id"] = None
         last_agent = agent_id
@@ -1050,37 +1086,80 @@ async def get_session_events(session_id: str, limit: int = 20, offset: int = 0) 
     db_path = get_db_path()
     if not _has_audit_schema(db_path):
         return []
-    key = session_id.rsplit("-", 1)[-1]
-    placeholders = ",".join("?" for _ in TERMINAL_OUTCOMES)
+    
+    placeholders = ", ".join("?" for _ in TERMINAL_OUTCOMES)
     terminal_list = list(sorted(TERMINAL_OUTCOMES))
-    hermes_trace_key = session_id[session_id.rfind("hermes-"):] if "hermes-" in session_id else session_id
-    hermes_task_key = session_id.split("-task-", 1)[1] if "-task-" in session_id else session_id
-    hermes_session_key = session_id.split("-session-", 1)[1] if "-session-" in session_id else session_id
-    is_hermes_session = session_id.startswith("hermes-") or "-hermes-" in session_id
     rows: list[dict[str, Any]] = []
 
     with sqlite3.connect(db_path, timeout=10) as conn:
         conn.row_factory = sqlite3.Row
         _ensure_query_indexes(conn, db_path)
+        
+        # Parse session_id to determine the type. Agent ids contain hyphens
+        # (e.g. hermes-live-agent), so split on the literal marker, not on "-".
+        # Formats: {agent}-session-{id}, {agent}-task-{id}, {agent}-group-{key}
+        if "-session-" in session_id:
+            agent_id, session_value = session_id.split("-session-", 1)
+            session_type = "session"
+        elif "-task-" in session_id:
+            agent_id, session_value = session_id.split("-task-", 1)
+            session_type = "task"
+        elif "-group-" in session_id:
+            agent_id, session_value = session_id.split("-group-", 1)
+            session_type = "group"
+        else:
+            agent_id, session_value, session_type = session_id, "", ""
 
-        if not is_hermes_session:
-            # Use range bounds instead of LIKE so both idx_audit_trail_hash and
-            # idx_audit_trail_prev_hash are used for indexed SEARCH rather than full scans.
-            # 'g' > max hex char 'f', so key + 'g' is a tight upper bound for any SHA-256
-            # hex hash that starts with key.
-            key_upper = key + "g"
-            rows = [dict(row) for row in conn.execute(
-                "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
-                "FROM audit_trail WHERE hash >= ? AND hash < ? "
-                "UNION "
-                "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
-                "FROM audit_trail WHERE prev_hash >= ? AND prev_hash < ? "
-                "ORDER BY timestamp ASC LIMIT ? OFFSET ?",
-                (key, key_upper, key, key_upper, limit, offset),
-            ).fetchall()]
-
-        if "-group-" in session_id:
+        # Determine if this is a real session identifier or a time-gap group
+        is_real_session = session_type in ("session", "task")
+        is_group_session = session_type == "group"
+        is_hermes_session = "hermes" in agent_id or session_id.startswith("hermes-")
+        
+        if is_real_session:
+            # Look up audit hashes from trace tables using the real session identifier
+            audit_hashes: set[str] = set()
+            
+            if session_type == "session" and _has_claude_trace_schema(db_path):
+                # Claude: session_id is a UUID
+                for row in conn.execute(
+                    "SELECT audit_hash FROM claude_tool_traces WHERE session_id = ? AND audit_hash IS NOT NULL",
+                    (session_value,)
+                ).fetchall():
+                    if row[0]:
+                        audit_hashes.add(row[0])
+            
+            if session_type == "session" and _has_hermes_trace_schema(db_path):
+                # Hermes: session_id
+                for row in conn.execute(
+                    "SELECT audit_hash FROM hermes_tool_traces WHERE session_id = ? AND audit_hash IS NOT NULL",
+                    (session_value,)
+                ).fetchall():
+                    if row[0]:
+                        audit_hashes.add(row[0])
+            
+            if session_type == "task" and _has_hermes_trace_schema(db_path):
+                # Hermes: task_id
+                for row in conn.execute(
+                    "SELECT audit_hash FROM hermes_tool_traces WHERE task_id = ? AND audit_hash IS NOT NULL",
+                    (session_value,)
+                ).fetchall():
+                    if row[0]:
+                        audit_hashes.add(row[0])
+            
+            # Fetch audit_trail rows by their hashes
+            if audit_hashes:
+                hash_placeholders = ", ".join("?" for _ in audit_hashes)
+                rows = [dict(row) for row in conn.execute(
+                    f"SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
+                    f"FROM audit_trail WHERE hash IN ({hash_placeholders}) OR prev_hash IN ({hash_placeholders}) "
+                    f"ORDER BY timestamp ASC LIMIT ? OFFSET ?",
+                    list(audit_hashes) + list(audit_hashes) + [limit, offset],
+                ).fetchall()]
+        
+        elif is_group_session:
+            # Legacy time-gap grouped session - use existing logic
             group_agent, group_key = session_id.split("-group-", 1)
+            key_upper = group_key + "g"
             anchor = conn.execute(
                 "SELECT hash, timestamp FROM audit_trail "
                 "WHERE agent_id = ? AND outcome IN (" + placeholders + ") "
@@ -1116,25 +1195,64 @@ async def get_session_events(session_id: str, limit: int = 20, offset: int = 0) 
                     anchor_hash = anchor["hash"]
                     rows = next((group for group in grouped if any(row.get("hash") == anchor_hash for row in group)), [])
                     rows = rows[offset:offset + limit]
-
+        
+        else:
+            # Fallback: treat as hash-based lookup (legacy behavior)
+            key = session_id.rsplit("-", 1)[-1]
+            key_upper = key + "g"
+            rows = [dict(row) for row in conn.execute(
+                "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
+                "FROM audit_trail WHERE hash >= ? AND hash < ? "
+                "UNION "
+                "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
+                "FROM audit_trail WHERE prev_hash >= ? AND prev_hash < ? "
+                "ORDER BY timestamp ASC LIMIT ? OFFSET ?",
+                (key, key_upper, key, key_upper, limit, offset),
+            ).fetchall()]
+        
         for row in rows:
-            row["trace_id"] = f"trace-{(row.get('prev_hash') or row.get('hash') or key)[:12]}"
+            row["trace_id"] = f"trace-{(row.get('prev_hash') or row.get('hash') or session_value)[:12]}"
             row["session_id"] = session_id
             if row.get("latency_ms") is None:
                 row["latency_ms"] = _legacy_audit_duration_ms(conn, row)
         events = [_normalize_event(row) for row in rows]
-
-        if _has_hermes_trace_schema(db_path):
-            hermes_rows = [dict(row) for row in conn.execute(
-                "SELECT id, timestamp, agent_id, agent_model, session_id, task_id, "
-                "tool_call_id, hermes_tool_name, asf_tool_name, verdict, outcome, reason, "
-                "stage, confidence, asf_latency_ms, tool_duration_ms, trace_id, audit_hash "
-                "FROM hermes_tool_traces "
-                "WHERE session_id = ? OR session_id = ? OR task_id = ? OR trace_id = ? OR trace_id = ? OR id = ? "
+        
+        # Also fetch Hermes trace rows if this is a Hermes session
+        if is_hermes_session or session_type == "task":
+            hermes_trace_key = session_id[session_id.rfind("hermes-"):] if "hermes-" in session_id else session_id
+            hermes_task_key = session_id.split("-task-", 1)[1] if "-task-" in session_id else session_id
+            hermes_session_key = session_id.split("-session-", 1)[1] if "-session-" in session_id else session_id
+            
+            if _has_hermes_trace_schema(db_path):
+                hermes_rows = [dict(row) for row in conn.execute(
+                    "SELECT id, timestamp, agent_id, agent_model, session_id, task_id, "
+                    "tool_call_id, hermes_tool_name, asf_tool_name, verdict, outcome, reason, "
+                    "stage, confidence, asf_latency_ms, tool_duration_ms, trace_id, audit_hash "
+                    "FROM hermes_tool_traces "
+                    "WHERE session_id = ? OR session_id = ? OR task_id = ? OR trace_id = ? OR trace_id = ? OR id = ? "
+                    "ORDER BY timestamp ASC LIMIT ? OFFSET ?",
+                    (session_id, hermes_session_key, hermes_task_key, session_id, hermes_trace_key, session_value, limit, offset),
+                ).fetchall()]
+                # The audit_trail events and these Hermes trace rows describe the same calls,
+                # correlated by audit_hash. Prefer the richer trace event (tool name, model, io)
+                # and drop the audit-derived duplicate so each call appears once.
+                covered_hashes = {r.get("audit_hash") for r in hermes_rows if r.get("audit_hash")}
+                if covered_hashes:
+                    events = [e for e in events if e.event_id not in covered_hashes]
+                events.extend(_normalize_hermes_trace(row) for row in hermes_rows)
+        
+        # Also fetch Claude trace rows if this is a Claude session
+        if session_type == "session" and _has_claude_trace_schema(db_path):
+            claude_rows = [dict(row) for row in conn.execute(
+                "SELECT id, timestamp, agent_id, agent_model, session_id, transcript_path, tool_call_id, "
+                "claude_tool_name, asf_tool_name, args_preview, output_preview, verdict, outcome, reason, "
+                "trace_id, audit_hash "
+                "FROM claude_tool_traces "
+                "WHERE session_id = ? "
                 "ORDER BY timestamp ASC LIMIT ? OFFSET ?",
-                (session_id, hermes_session_key, hermes_task_key, session_id, hermes_trace_key, key, limit, offset),
+                (session_value, limit, offset),
             ).fetchall()]
-            events.extend(_normalize_hermes_trace(row) for row in hermes_rows)
+            # Claude rows are already included via audit_trail join, but we can enrich if needed
 
     events.sort(key=lambda event: _parse_timestamp(event.timestamp) or datetime.min)
     # If both legacy audit rows and Hermes trace rows matched, keep the requested page size.
@@ -1319,6 +1437,37 @@ async def get_sessions(
     audit_intervals: list[tuple[str, datetime | None, datetime | None, set[str]]] = []
     with sqlite3.connect(db_path, timeout=10) as conn:
         conn.row_factory = sqlite3.Row
+        
+        # Build a lookup from audit_hash to real session identifiers.
+        # This lets audit_trail rows be grouped by the stable session IDs from trace tables.
+        audit_hash_to_session: dict[str, str] = {}
+        
+        # Claude: session_id is a stable UUID per conversation
+        if _has_claude_trace_schema(db_path):
+            for row in conn.execute(
+                "SELECT audit_hash, session_id, agent_id FROM claude_tool_traces WHERE audit_hash IS NOT NULL AND session_id IS NOT NULL"
+            ).fetchall():
+                ah = row[0]
+                sid = row[1]
+                agent = row[2]
+                if ah and sid and agent:
+                    audit_hash_to_session[ah] = f"{agent}-session-{sid}"
+        
+        # Hermes: prefer session_id, else task_id as the session identifier
+        if _has_hermes_trace_schema(db_path):
+            for row in conn.execute(
+                "SELECT audit_hash, session_id, task_id, agent_id FROM hermes_tool_traces WHERE audit_hash IS NOT NULL"
+            ).fetchall():
+                ah = row[0]
+                agent = row[3]
+                if ah and agent:
+                    raw_sid = row[1]
+                    task_id = row[2]
+                    if raw_sid:
+                        audit_hash_to_session[ah] = f"{agent}-session-{raw_sid}"
+                    elif task_id:
+                        audit_hash_to_session[ah] = f"{agent}-task-{task_id}"
+        
         audit_groups: list[dict[str, Any]] = []
         for row in sorted(all_rows, key=lambda r: (r.get("agent_id") or "", r.get("timestamp") or "")):
             agent = row.get("agent_id") or "unknown-agent"
@@ -1326,20 +1475,44 @@ async def get_sessions(
             outcome = row.get("outcome") or ""
             key = (row.get("prev_hash") or row.get("hash") or "")[:12]
             row_duration_ms = _legacy_audit_duration_ms(conn, row)
-
+            
+            # Check if this audit row has a real session identifier via its hash
+            real_session_key: str | None = None
+            h = row.get("hash")
+            ph = row.get("prev_hash")
+            if h and h in audit_hash_to_session:
+                real_session_key = audit_hash_to_session[h]
+            elif ph and ph in audit_hash_to_session:
+                real_session_key = audit_hash_to_session[ph]
+            
+            # Determine if we should continue the current group or start a new one
             group = audit_groups[-1] if audit_groups else None
-            same_session = (
-                group is not None
-                and group["agent_id"] == agent
-                and ts is not None
-                and group["end_ts"] is not None
-                and ts - group["end_ts"] < timedelta(seconds=30)
-            )
+            
+            # If we have a real session identifier, group by it exactly
+            if real_session_key:
+                # Find existing group with this session key
+                matching_group = next((g for g in audit_groups if g.get("_session_key") == real_session_key), None)
+                if matching_group is not None:
+                    group = matching_group
+                    same_session = True
+                else:
+                    same_session = False
+            else:
+                # No real identifier: fall back to 30-second time-gap heuristic
+                same_session = (
+                    group is not None
+                    and group["agent_id"] == agent
+                    and ts is not None
+                    and group["end_ts"] is not None
+                    and ts - group["end_ts"] < timedelta(seconds=30)
+                )
+            
             row_model = hermes_model_by_audit_hash.get(row.get("hash") or "") or hermes_model_by_audit_hash.get(row.get("prev_hash") or "")
             if not same_session:
                 framework, model = _agent_metadata(agent, agent_model=row_model)
+                session_id = real_session_key if real_session_key else f"{agent}-group-{key}"
                 group = {
-                    "session_id": f"{agent}-group-{key}",
+                    "session_id": session_id,
                     "agent_id": agent,
                     "agent_framework": framework,
                     "agent_model": model,
@@ -1353,9 +1526,10 @@ async def get_sessions(
                     "hitl_count": 0,
                     "duration_sum_ms": 0,
                     "_hashes": set(),
+                    "_session_key": real_session_key,  # Track the grouping key
                 }
                 audit_groups.append(group)
-
+            
             assert group is not None
             if ts is not None:
                 if group["start_ts"] is None or ts < group["start_ts"]:
@@ -1364,7 +1538,7 @@ async def get_sessions(
                 if group["end_ts"] is None or ts > group["end_ts"]:
                     group["end_ts"] = ts
                     group["end_time"] = str(row.get("timestamp") or "")
-
+            
             group["total_events"] += 1
             group["blocked_count"] += 1 if outcome in BLOCK_OUTCOMES else 0
             group["allowed_count"] += 1 if outcome in ALLOW_OUTCOMES else 0
@@ -1372,10 +1546,8 @@ async def get_sessions(
             group["duration_sum_ms"] += row_duration_ms
             if row_model and group.get("agent_framework") == "Hermes Agent":
                 group["agent_model"] = row_model
-            h = row.get("hash")
             if h:
                 group["_hashes"].add(h)
-            ph = row.get("prev_hash")
             if ph:
                 group["_hashes"].add(ph)
 
