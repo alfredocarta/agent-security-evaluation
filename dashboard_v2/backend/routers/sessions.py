@@ -22,7 +22,7 @@ async def recent_sessions(
 @router.get("/{session_id}", response_model=list[AuditEvent])
 async def session_events(
     session_id: str,
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=20, ge=1, le=2000),
     offset: int = Query(default=0, ge=0),
 ):
     return await get_session_events(session_id, limit=limit, offset=offset)
