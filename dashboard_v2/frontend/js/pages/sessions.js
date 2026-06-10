@@ -5,7 +5,7 @@ const { createApp } = Vue;
     template: ASF.shell('sessions', 'Sessions', content),
   data: () => ({
     sessions: [], agents: [], selectedAgent: '', sessionEvents: [], sessionPageCache: {}, sessionHasMore: {},
-    sessionLoadingMore: false, sessionPageSize: 10, sessionPage: 0, sessionsPage: 0, sessionsPageSize: 10,
+    sessionLoadingMore: false, sessionPageSize: 10, sessionPage: 0, sessionsPage: 0, sessionsPageSize: 10, SESSION_EVENTS_LIMIT: 1000,
     sessionsPageCache: {}, sessionsHasMore: false, sessionsLoading: false, expandedSession: null,
     loadingSession: false, expandedReasons: new Set(), activeEventDetailsId: null, eventExplanations: {}, loadingEventDetails: new Set(), selectedPipelineStages: {}, sessionSearch: '',
     lastRefresh: '', refreshLabel: '5s', footerText: 'ASF v2', dataAsOf: null, dbSource: '',
@@ -48,7 +48,7 @@ const { createApp } = Vue;
       return Math.max(Number(s?.total_events || 0), this.sessionEvents.length || 0);
     },
     expandedSessionTotalPages() { return Math.max(1, Math.ceil(this.expandedSessionTotalEvents / this.sessionPageSize)); },
-    paginatedSessionEvents() { return (this.sessionEvents || []).slice(0, this.sessionPageSize); },
+    paginatedSessionEvents() { const start = this.sessionPage * this.sessionPageSize; return (this.sessionEvents || []).slice(start, start + this.sessionPageSize); },
     activeEventDetails() { return (this.sessionEvents || []).find(ev => ev.event_id === this.activeEventDetailsId) || null; },
     maxSessionDuration() { return this.sessions.length ? (Math.max(...this.sessions.map(s => s.duration_ms || 0)) || 1) : 1; },
   },
@@ -109,27 +109,28 @@ const { createApp } = Vue;
       this.sessionPage = 0; this.sessionsPage = 0; await this.refresh();
     },
     prefetchSession(sessionId) {
-      const pageKey = `${sessionId}:0`; if (this.sessionPageCache[pageKey]) return;
-      this.fetchJson(`/api/sessions/${encodeURIComponent(sessionId)}?limit=${this.sessionPageSize}&offset=0`)
-        .then(events => { if (!this.sessionPageCache[pageKey]) this.sessionPageCache = { ...this.sessionPageCache, [pageKey]: events.slice(0, this.sessionPageSize) }; })
+      if (this.sessionPageCache[sessionId]) return;
+      this.fetchJson(`/api/sessions/${encodeURIComponent(sessionId)}?limit=${this.SESSION_EVENTS_LIMIT}&offset=0`)
+        .then(events => { if (!this.sessionPageCache[sessionId]) this.sessionPageCache = { ...this.sessionPageCache, [sessionId]: events }; })
         .catch(() => {});
     },
     async toggleSession(sessionId) {
       if (this.expandedSession === sessionId) { this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.expandedReasons = new Set(); this.closeEventDetails(); return; }
-      this.expandedSession = sessionId; this.sessionPage = 0; this.expandedReasons = new Set(); this.closeEventDetails(); await this.loadSession(sessionId, 0);
+      this.expandedSession = sessionId; this.sessionPage = 0; this.expandedReasons = new Set(); this.closeEventDetails(); await this.loadSession(sessionId);
     },
-    async loadSession(sessionId, page = this.sessionPage) {
-      const pageKey = `${sessionId}:${page}`; const cached = this.sessionPageCache[pageKey];
-      if (cached) { this.sessionPage = page; this.sessionEvents = cached; this.loadingSession = false; this.sessionLoadingMore = false; return; }
-      const offset = page * this.sessionPageSize; if (page === 0) this.loadingSession = true; else this.sessionLoadingMore = true;
+    async loadSession(sessionId) {
+      // Load the whole session once, then paginate client-side: page navigation is instant
+      // (no per-page server round-trip).
+      const cached = this.sessionPageCache[sessionId];
+      if (cached) { this.sessionEvents = cached; this.loadingSession = false; this.sessionLoadingMore = false; return; }
+      this.loadingSession = true;
       try {
-        const events = (await this.fetchJson(`/api/sessions/${encodeURIComponent(sessionId)}?limit=${this.sessionPageSize}&offset=${offset}`)).slice(0, this.sessionPageSize);
-        this.sessionPageCache = { ...this.sessionPageCache, [pageKey]: events }; this.sessionPage = page; this.sessionEvents = events;
-        this.sessionHasMore = { ...this.sessionHasMore, [sessionId]: page + 1 < this.expandedSessionTotalPages };
+        const events = await this.fetchJson(`/api/sessions/${encodeURIComponent(sessionId)}?limit=${this.SESSION_EVENTS_LIMIT}&offset=0`);
+        this.sessionPageCache = { ...this.sessionPageCache, [sessionId]: events }; this.sessionEvents = events;
       } finally { this.loadingSession = false; this.sessionLoadingMore = false; }
     },
-    async nextSessionPage() { if (this.expandedSession && !this.sessionLoadingMore && this.sessionPage + 1 < this.expandedSessionTotalPages) await this.loadSession(this.expandedSession, this.sessionPage + 1); },
-    async prevSessionPage() { if (this.expandedSession && !this.sessionLoadingMore && this.sessionPage !== 0) await this.loadSession(this.expandedSession, this.sessionPage - 1); },
+    nextSessionPage() { if (this.expandedSession && this.sessionPage + 1 < this.expandedSessionTotalPages) this.sessionPage += 1; },
+    prevSessionPage() { if (this.expandedSession && this.sessionPage !== 0) this.sessionPage -= 1; },
     expandReason(id) { const s = new Set(this.expandedReasons); s.has(id) ? s.delete(id) : s.add(id); this.expandedReasons = s; },
     frameworkForAgent(id) { return (id || '').includes('hermes') ? 'Hermes Agent' : 'framework not recorded'; },
     modelForAgent(id) { return (id || '').includes('hermes') ? 'gpt-5.5 via openai-codex' : 'not recorded'; },

@@ -465,11 +465,12 @@ def _extract_stage(outcome: str, reason: str | None) -> str:
         return "Stage 3 ONNX Prompt Guard"
     if "stage 3" in r or "llm" in r or "double-check" in r or "double_check" in r:
         return "Stage 3 LLM"
-    if "stage 2" in r:
+    if "stage 2" in r or "classifier confidence" in r:
         return "Stage 2"
-    if "stage 1" in r or "regex" in r:
+    if "stage 1" in r or "regex" in r or "pattern detected" in r:
         return "Stage 1"
-    if "not in permissions" in r or "suspended" in r or "canary" in r or "l1.5" in r:
+    if ("not in permissions" in r or "suspended" in r or "canary" in r or "l1.5" in r
+            or "not authorized" in r or "access denied" in r or "allowlist" in r):
         return "L1.5 fast-path"
     return INTERMEDIATE_STAGE.get(outcome, "Unknown")
 
@@ -1076,7 +1077,9 @@ async def get_event_explanation(event_id: str) -> EventExplanation:
 
 
 async def get_session_events(session_id: str, limit: int = 20, offset: int = 0) -> list[AuditEvent]:
-    limit = max(1, min(int(limit), 100))
+    # Cap high enough to load a whole session in one call; the frontend then paginates
+    # client-side so page navigation needs no further round-trips.
+    limit = max(1, min(int(limit), 2000))
     offset = max(0, int(offset))
     cache_key = ("session_events", session_id, limit, offset)
     cached = _cache_get(cache_key)
@@ -1666,7 +1669,7 @@ def _get_hermes_metric_counts(db_path: Path, agent_id: str | None = None) -> dic
     }
 
 
-_GOV_RBAC_REASON_LIKE = ("%suspended or not found%", "%not in permissions%")
+_GOV_RBAC_REASON_LIKE = ("%suspended or not found%", "%not in permissions%", "%not authorized%", "%access denied%")
 
 
 def _governance_rbac_counts(db_path: Path, agent_id: str | None) -> dict[str, int]:
@@ -1945,7 +1948,7 @@ def _classify_block_reason(outcome: str, reason: str | None) -> str:
     r = (reason or "").lower()
     if "suspended or not found" in r or ("suspended" in r and "not found" in r):
         return "governance"
-    if "not in permissions" in r:
+    if "not in permissions" in r or "not authorized" in r or "access denied" in r:
         return "rbac"
     if outcome == "OUTPUT_BLOCK":
         return "output_guard"
