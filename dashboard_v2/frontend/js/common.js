@@ -158,7 +158,8 @@ window.ASF = (() => {
       ms = Number(ms) || 0;
       if (ms < 1000) return `${Math.round(ms)}ms`;
       if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-      return `${(ms / 60000).toFixed(1)}m`;
+      if (ms < 3600000) return `${(ms / 60000).toFixed(1)}m`;
+      return `${(ms / 3600000).toFixed(1)}h`;
     },
     ratioWidth(blocked, allowed, isBlocked) {
       const t = (blocked || 0) + (allowed || 0);
