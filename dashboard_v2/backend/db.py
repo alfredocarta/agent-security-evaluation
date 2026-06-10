@@ -1146,14 +1146,17 @@ async def get_session_events(session_id: str, limit: int = 20, offset: int = 0) 
                     if row[0]:
                         audit_hashes.add(row[0])
             
-            # Fetch audit_trail rows by their hashes
+            # Fetch the terminal audit_trail rows for these hashes. audit_hash from the trace
+            # tables is the terminal decision event's hash, so match on hash only (the old
+            # "OR prev_hash IN" pulled in adjacent intermediate events like INTERCEPTOR_START)
+            # and keep only terminal outcomes so non-terminal stage events never become rows.
             if audit_hashes:
                 hash_placeholders = ", ".join("?" for _ in audit_hashes)
                 rows = [dict(row) for row in conn.execute(
                     f"SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
-                    f"FROM audit_trail WHERE hash IN ({hash_placeholders}) OR prev_hash IN ({hash_placeholders}) "
+                    f"FROM audit_trail WHERE hash IN ({hash_placeholders}) AND outcome IN ({placeholders}) "
                     f"ORDER BY timestamp ASC LIMIT ? OFFSET ?",
-                    list(audit_hashes) + list(audit_hashes) + [limit, offset],
+                    list(audit_hashes) + terminal_list + [limit, offset],
                 ).fetchall()]
         
         elif is_group_session:

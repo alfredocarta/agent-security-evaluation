@@ -957,6 +957,54 @@ def test_get_session_events_returns_events_for_hermes_task_session(tmp_path, mon
     assert len(events) == 3
 
 
+def test_get_session_events_excludes_interceptor_start_rows(tmp_path, monkeypatch):
+    """Non-terminal stage events (INTERCEPTOR_START) must not appear as timeline rows."""
+    db_path = tmp_path / "asf_test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE audit_trail ("
+        "hash TEXT PRIMARY KEY, timestamp TEXT, agent_id TEXT, action TEXT, "
+        "outcome TEXT, reason TEXT, prev_hash TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE claude_tool_traces ("
+        "id TEXT PRIMARY KEY, timestamp TEXT, source TEXT, agent_id TEXT, agent_model TEXT, "
+        "session_id TEXT, transcript_path TEXT, tool_call_id TEXT, claude_tool_name TEXT, "
+        "asf_tool_name TEXT, args_hash TEXT, args_preview TEXT, output_hash TEXT, output_preview TEXT, "
+        "verdict TEXT, outcome TEXT, reason TEXT, trace_id TEXT, audit_hash TEXT, created_at TEXT)"
+    )
+    base_ts = datetime(2026, 6, 10, 12, 0, 0)
+    for i in range(2):
+        ts = (base_ts + timedelta(seconds=i * 10)).strftime("%Y-%m-%d %H:%M:%S")
+        term_hash = f"claudeterm-{i:03d}"
+        # Terminal decision event for this call
+        conn.execute(
+            "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+            "VALUES (?, ?, 'claude-code-agent', 'file_read', 'ALLOWED', 'ok', ?)",
+            (term_hash, ts, f"prev-{i:03d}"),
+        )
+        # Intermediate INTERCEPTOR_START whose prev_hash points at the terminal hash
+        conn.execute(
+            "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
+            "VALUES (?, ?, 'claude-code-agent', 'file_read', 'INTERCEPTOR_START', 'start', ?)",
+            (f"claudestart-{i:03d}", ts, term_hash),
+        )
+        conn.execute(
+            "INSERT INTO claude_tool_traces (id, timestamp, agent_id, session_id, claude_tool_name, "
+            "asf_tool_name, args_hash, verdict, outcome, reason, trace_id, audit_hash, created_at) "
+            "VALUES (?, ?, 'claude-code-agent', 'uuid-abc', 'Read', 'file_read', 'args', 'ALLOW', "
+            "'ALLOWED', 'ok', ?, ?, ?)",
+            (f"c{i:03d}", ts, f"ctrace-{i:03d}", term_hash, ts),
+        )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    events = asyncio.run(db.get_session_events("claude-code-agent-session-uuid-abc", limit=20, offset=0))
+    assert len(events) == 2
+    assert all((e.outcome or "") != "INTERCEPTOR_START" for e in events)
+
+
 def test_claude_events_with_same_session_id_group_into_one_session(tmp_path, monkeypatch):
     """Claude events sharing session_id (UUID) must group into one session."""
     db_path = tmp_path / "asf_test.db"
