@@ -48,7 +48,7 @@ const { createApp } = Vue;
       return Math.max(Number(s?.total_events || 0), this.sessionEvents.length || 0);
     },
     expandedSessionTotalPages() { return Math.max(1, Math.ceil(this.expandedSessionTotalEvents / this.sessionPageSize)); },
-    paginatedSessionEvents() { const start = this.sessionPage * this.sessionPageSize; return (this.sessionEvents || []).slice(start, start + this.sessionPageSize); },
+    paginatedSessionEvents() { const all = (this.sessionEvents || []).slice().reverse(); const start = this.sessionPage * this.sessionPageSize; return all.slice(start, start + this.sessionPageSize); },
     activeEventDetails() { return (this.sessionEvents || []).find(ev => ev.event_id === this.activeEventDetailsId) || null; },
     maxSessionDuration() { return this.sessions.length ? (Math.max(...this.sessions.map(s => s.duration_ms || 0)) || 1) : 1; },
   },
