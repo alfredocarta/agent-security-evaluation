@@ -105,9 +105,13 @@ window.ASF = (() => {
       label = 'Output check';
       shortTech = 'Output guard';
       isFallback = false;
-    } else if (s.includes('stage 3') || s.includes('onnx') || s.includes('llm')) {
+    } else if (s.includes('onnx')) {
+      label = 'ONNX scan';
+      shortTech = 'Stage 3 ONNX Prompt Guard';
+      isFallback = false;
+    } else if (s.includes('stage 3') || s.includes('llm')) {
       label = 'LLM review';
-      shortTech = s.includes('onnx') ? 'Stage 3 ONNX Prompt Guard' : 'Stage 3 LLM';
+      shortTech = 'Stage 3 LLM';
       isFallback = false;
     } else if ((s.includes('stage 2.5') || s.includes('2.5')) && s.includes('prompt guard')) {
       label = 'Injection guard';
@@ -253,7 +257,7 @@ window.ASF = (() => {
       if (s.includes('stage 2.5') || s.includes('deberta')) return 'badge badge-stage badge-stage-25';
       if (s.includes('stage 2')) return 'badge badge-stage badge-stage-2';
       if (s.includes('stage 1')) return 'badge badge-stage badge-stage-1';
-      if (s.includes('stage 3') || s.includes('llm')) return 'badge badge-stage badge-stage-3';
+      if (s.includes('stage 3') || s.includes('llm') || s.includes('onnx')) return 'badge badge-stage badge-stage-3';
       if (s.includes('output guard')) return 'badge badge-stage badge-stage-output';
       if (s.includes('prompt guard')) return 'badge badge-stage badge-stage-pg';
       return 'badge badge-stage badge-stage-unk';

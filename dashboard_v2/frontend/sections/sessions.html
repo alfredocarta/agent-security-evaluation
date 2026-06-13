@@ -47,7 +47,7 @@ Refresh
 <tr @click="toggleSession(session.session_id)" @mouseenter="prefetchSession(session.session_id)">
 <td>
 <span style="display:inline-flex;align-items:center;gap:6px;">
-<span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted);">{{ truncate(session.session_id, 20) }}</span>
+<span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted);">{{ truncate(session.session_id, 48) }}</span>
 <button class="copy-btn" title="Copy full session ID" @click.stop="copyId(session.session_id)">copy</button>
 </span>
 </td>
@@ -84,6 +84,9 @@ are not captured - ASF operates at the tool call boundary.
 <span style="color:var(--text-secondary);">{{ expandedSessionInfo.framework }}</span>
 <span style="color:var(--text-muted);">·</span>
 <span style="color:var(--text-secondary);">Agent model: <span style="color:var(--text-primary);">{{ expandedSessionInfo.model }}</span></span>
+<span style="color:var(--text-muted);">·</span>
+<span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted);" :title="expandedSession">Session: {{ truncate(expandedSession, 60) }}</span>
+<button class="copy-btn" style="font-size:10px;padding:1px 6px;" @click.stop="copyId(expandedSession)" title="Copy full session ID">copy</button>
 </div>
 <div v-if="loadingSession" style="font-size:13px;color:var(--text-muted);">Loading session events…</div>
 <div v-else-if="paginatedSessionEvents.length === 0" style="font-size:13px;color:var(--text-muted);">No events found.</div>
@@ -198,6 +201,11 @@ Previous
 <div class="decision-context-title">Decision context</div>
 <div class="decision-context-grid">
 <div class="decision-context-meta"><span>Agent</span><b>{{ explanationForEvent(ev).agent_id || ev.agent_id || 'not recorded' }}</b></div>
+<div v-if="explanationForEvent(ev).transcript_path" class="decision-context-meta">
+<span>Transcript</span>
+<b style="font-family:'JetBrains Mono',monospace;font-size:11px;word-break:break-all;">{{ explanationForEvent(ev).transcript_path }}</b>
+<button class="copy-btn" style="font-size:10px;padding:1px 6px;" @click.stop="copyId(explanationForEvent(ev).transcript_path)" title="Copy transcript path">copy</button>
+</div>
 <div class="decision-context-meta"><span>Model</span><b>{{ explanationForEvent(ev).agent_model || ev.agent_model || 'not recorded' }}</b></div>
 <div class="decision-context-meta"><span>Tool</span><b>{{ explanationForEvent(ev).tool_name || ev.tool_name || ev.action || 'not recorded' }}</b></div>
 </div>

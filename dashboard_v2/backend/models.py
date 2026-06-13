@@ -51,6 +51,7 @@ class EventExplanation(BaseModel):
     final_reason: str = ""
     security_model: str | None = None
     latency_ms: int | None = None
+    transcript_path: str | None = None
     pipeline: list[PipelineStage]
 
 

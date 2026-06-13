@@ -1088,6 +1088,7 @@ async def get_event_explanation(event_id: str) -> EventExplanation:
                     tool_input=claude_row.get("args_preview") or None,
                     tool_output=claude_row.get("output_preview") or None,
                 )
+                explanation.transcript_path = claude_row.get("transcript_path") or None
             else:
                 explanation = _event_explanation_from_pipeline(event_id, audit_events)
             return _cache_set(cache_key, explanation, ttl=300.0)
