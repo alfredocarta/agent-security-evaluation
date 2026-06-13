@@ -9,7 +9,7 @@ const { createApp } = Vue;
       refreshLabel: '5s',
       footerText: 'ASF v2',
       dataAsOf: null,
-      dbSource: '',
+      dbSource: '', activeEnv: 'production',
       refreshInterval: null,
       charts: null,
       chartsWindow: '24h',

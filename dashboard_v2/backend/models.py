@@ -154,3 +154,9 @@ class OverviewCharts(BaseModel):
     latency: LatencyDistribution
     timeline: list[TimelinePoint]
     per_agent: list[AgentPosture]
+
+
+class EnvInfo(BaseModel):
+    active_env: str
+    available: list[str]
+    db_path: str

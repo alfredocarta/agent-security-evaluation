@@ -31,6 +31,14 @@ window.ASF = (() => {
           <header class="topbar">
             <div class="topbar-title">Agent Security Framework / ${title}</div>
             <div class="topbar-actions">
+              <div class="env-selector" style="display:flex;align-items:center;gap:6px;">
+                <span v-if="activeEnv === 'test'" @click="switchEnv('production')" style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border:1px solid rgba(210,153,34,.5);border-radius:5px;background:rgba(210,153,34,.12);font-size:11px;font-weight:700;color:var(--warning);cursor:pointer;letter-spacing:.04em;" title="Test database active — click to switch to production">
+                  <span class="pulse-dot"></span>TEST
+                </span>
+                <span v-else @click="switchEnv('test')" style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border:1px solid var(--border);border-radius:5px;background:transparent;font-size:11px;color:var(--text-muted);cursor:pointer;" title="Click to switch to test database">
+                  PROD
+                </span>
+              </div>
               <div class="provenance">
                 <span v-if="dbSource" class="provenance-item" title="Audit data source">
                   <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><ellipse cx="8" cy="3.5" rx="6" ry="2.2"/><path d="M2 6.2c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2V9c0 1.2-2.7 2.2-6 2.2S2 10.2 2 9V6.2z"/><path d="M2 9.8c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2v2.4c0 1.2-2.7 2.2-6 2.2s-6-1-6-2.2V9.8z"/></svg>
@@ -140,10 +148,24 @@ window.ASF = (() => {
     fetchJson,
     async loadProvenance() {
       try {
-        const p = await fetchJson('/api/metrics/provenance');
+        const [p, e] = await Promise.all([
+          fetchJson('/api/metrics/provenance'),
+          fetchJson('/api/env'),
+        ]);
         this.dbSource = p.db_source || '';
         this.dataAsOf = p.data_as_of || null;
+        this.activeEnv = e.active_env || 'production';
       } catch (_e) { /* keep previous provenance on transient error */ }
+    },
+    async switchEnv(name) {
+      try {
+        await fetch('/api/env/switch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ env: name }),
+        });
+        await this.loadProvenance();
+      } catch (_e) {}
     },
     fmtNum(v) { return (v ?? 0).toLocaleString(); },
     percent(v) { return `${Math.round((v || 0) * 100)}%`; },

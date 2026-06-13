@@ -8,7 +8,7 @@ const { createApp } = Vue;
     sessionLoadingMore: false, sessionPageSize: 10, sessionPage: 0, sessionsPage: 0, sessionsPageSize: 10, SESSION_EVENTS_LIMIT: 1000,
     sessionsPageCache: {}, sessionsHasMore: false, sessionsLoading: false, expandedSession: null,
     loadingSession: false, expandedReasons: new Set(), activeEventDetailsId: null, eventExplanations: {}, loadingEventDetails: new Set(), selectedPipelineStages: {}, sessionSearch: '',
-    lastRefresh: '', refreshLabel: '5s', footerText: 'ASF v2', dataAsOf: null, dbSource: '',
+    lastRefresh: '', refreshLabel: '5s', footerText: 'ASF v2', dataAsOf: null, dbSource: '', activeEnv: 'production',
     ENVELOPE_NOISE_KEYS: new Set(['originalfile', 'filepath', 'file_path', 'path', 'type', 'numlines', 'totallines', 'startline', 'offset', 'limit', 'interrupted', 'isimage', 'nooutputexpected', 'sandboxed', 'sandbox_warning', 'mode', 'gitoperation', 'durationms', 'duration_ms', 'returncode', 'exit_code', 'stderr']),
   }),
   computed: {

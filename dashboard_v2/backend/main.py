@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import init_db
-from .routers import agents, compliance, events, hitl, metrics, report, sessions
+from .routers import agents, compliance, env, events, hitl, metrics, report, sessions
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,6 +30,7 @@ app.include_router(sessions.router)
 app.include_router(metrics.router)
 app.include_router(compliance.router)
 app.include_router(report.router)
+app.include_router(env.router)
 
 app.mount("/assets", StaticFiles(directory=FRONTEND_DIR), name="assets")
 app.mount("/sections", StaticFiles(directory=FRONTEND_DIR / "sections"), name="sections")

@@ -6,7 +6,7 @@ const { createApp } = Vue;
     data: () => ({
       metrics: {}, compliance: [], articleEvents: [], articleCache: {}, articleHasMore: {},
       articleLoadingMore: false, articlePageSize: 20, expandedArticle: null, loadingArticle: false,
-      lastRefresh: '', refreshLabel: '5s', footerText: 'ASF v2', dataAsOf: null, dbSource: '',
+      lastRefresh: '', refreshLabel: '5s', footerText: 'ASF v2', dataAsOf: null, dbSource: '', activeEnv: 'production',
     }),
     mounted() { this.refresh(); setInterval(this.refresh, 5000); },
     methods: {

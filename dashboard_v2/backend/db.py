@@ -32,6 +32,10 @@ from .models import (
 ASF_ROOT = Path(os.environ.get("ASF_ROOT", "/Users/alfredo/Projects/agent-security-framework"))
 REQUESTED_DB_PATH = Path(os.environ.get("ASF_AUDIT_DB", str(ASF_ROOT / "audit.db")))
 FALLBACK_DB_PATH = ASF_ROOT / "asf_local.db"
+TEST_DB_PATH = Path(os.environ.get("ASF_TEST_DB", str(ASF_ROOT / "asf_test.db")))
+
+_ACTIVE_ENV: str = "production"
+_VALID_ENVS: frozenset[str] = frozenset({"production", "test"})
 CACHE_PATH = Path(__file__).resolve().parents[1] / "dashboard_cache.json"
 _RUNTIME_CACHE: dict[tuple[Any, ...], tuple[float, Any]] = {}
 _INDEXED_DB_PATHS: set[str] = set()
@@ -228,9 +232,29 @@ def _has_claude_trace_schema(path: Path) -> bool:
 
 
 def get_db_path() -> Path:
+    if _ACTIVE_ENV == "test":
+        return TEST_DB_PATH
     if _has_audit_schema(REQUESTED_DB_PATH):
         return REQUESTED_DB_PATH
     return FALLBACK_DB_PATH
+
+
+def set_active_env(name: str) -> bool:
+    """Switch the active environment. Returns False if name is not valid. Clears caches."""
+    global _ACTIVE_ENV
+    if name not in _VALID_ENVS:
+        return False
+    _ACTIVE_ENV = name
+    invalidate_cache()
+    return True
+
+
+def get_env_info() -> dict[str, Any]:
+    return {
+        "active_env": _ACTIVE_ENV,
+        "available": sorted(_VALID_ENVS),
+        "db_path": str(get_db_path()),
+    }
 
 
 async def init_db() -> None:

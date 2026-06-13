@@ -93,7 +93,7 @@ const { createApp } = Vue;
       refreshLabel: '5s',
       footerText: 'ASF v2',
       dataAsOf: null,
-      dbSource: '',
+      dbSource: '', activeEnv: 'production',
     }),
     mounted() { this.refresh(); setInterval(this.refresh, 5000); },
     methods: {
