@@ -169,6 +169,28 @@ const { createApp } = Vue;
     formatModalInput(raw) {
       const parsed = this.parseJsonObject(raw);
       if (!parsed) return raw;
+      if (typeof parsed.code === 'string') {
+        const headerLines = [];
+        for (const key of ['language', 'timeout', 'execution_time', 'shell']) {
+          if (typeof parsed[key] === 'string') headerLines.push(`${key}: ${parsed[key]}`);
+        }
+        const MAX_CODE_BYTES = 5000;
+        const encoder = new TextEncoder();
+        let code = parsed.code;
+        const totalBytes = encoder.encode(code).length;
+        if (totalBytes > MAX_CODE_BYTES) {
+          let lo = 0, hi = code.length;
+          while (lo < hi) {
+            const mid = Math.ceil((lo + hi) / 2);
+            if (encoder.encode(code.slice(0, mid)).length <= MAX_CODE_BYTES) lo = mid;
+            else hi = mid - 1;
+          }
+          const kept = code.slice(0, lo);
+          const removedBytes = totalBytes - encoder.encode(kept).length;
+          code = `${kept} [truncated ${removedBytes} bytes]`;
+        }
+        return headerLines.length ? `${headerLines.join('\n')}\n\n${code}` : code;
+      }
       for (const key of ['command', 'input', 'prompt', 'text', 'query', 'pattern', 'url', 'message']) {
         if (typeof parsed[key] === 'string') return this.stringifyModalValue(parsed[key]);
       }
@@ -300,6 +322,18 @@ const { createApp } = Vue;
     stageStepTitle(stage, idx) {
       const display = this.stageDisplay(stage?.stage);
       return `Step ${idx + 1}: ${display.label} (${display.technical})`;
+    },
+    assessmentLabel(ev) {
+      const expl = this.explanationForEvent(ev);
+      if (!expl) return null;
+      const pipeline = expl.pipeline || [];
+      const terminal = pipeline.find(s => s && s.terminal) || pipeline[pipeline.length - 1] || null;
+      const reason = terminal?.reason || expl.final_reason || '';
+      if (!terminal) return expl.final_reason || null;
+      const stage = this.stageLabel(terminal.stage);
+      if (!stage || stage === 'ASF check') return reason || null;
+      const short = reason.length > 120 ? reason.slice(0, 117) + '...' : reason;
+      return stage + (short ? ': ' + short : '');
     },
     async toggleEventDetails(ev) {
       if (!ev?.event_id) return;

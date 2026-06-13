@@ -91,7 +91,7 @@ are not captured - ASF operates at the tool call boundary.
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:7px;">
 <span class="mono" style="font-size:12px;color:var(--text-muted);">{{ timeOnly(ev.timestamp) }}</span>
 <span style="font-weight:600;font-size:13px;">{{ ev.tool_name || ev.action }}</span>
-<span :class="verdictBadgeClass(ev)">{{ ev.verdict || ev.outcome }}</span>
+<span :class="verdictBadgeClass(ev)">{{ verdictShortLabel(ev) }}</span>
 <span :class="stageBadgeClass(ev.stage)" :title="stageTechnical(ev.stage)">{{ stageLabel(ev.stage) }}</span>
 <span v-if="ev.latency_ms != null" class="mono" style="font-size:12px;color:var(--text-muted);">{{ formatDuration(ev.latency_ms) }}</span>
 <button v-if="isTerminalEvent(ev)" :class="eventDetailsButtonClass(ev)" style="margin-left:auto;" @click.stop="toggleEventDetails(ev)">
@@ -158,7 +158,7 @@ Previous
 <div class="modal-hdr session-details-hdr">
 <div class="modal-title session-details-title">
 <span>{{ ev.tool_name || ev.action || 'Event details' }}</span>
-<span :class="verdictBadgeClass(ev)">{{ ev.verdict || ev.outcome }}</span>
+<span :class="verdictBadgeClass(ev)">{{ verdictShortLabel(ev) }}</span>
 </div>
 <button class="session-details-close" type="button" title="Close" aria-label="Close" @click="closeEventDetails">Close</button>
 </div>
@@ -167,7 +167,7 @@ Previous
 <div class="event-explanation-summary" v-if="explanationForEvent(ev)">
 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
 <span :class="verdictBadgeClass({ verdict: explanationForEvent(ev).final_verdict, outcome: explanationForEvent(ev).final_outcome })">
-{{ explanationForEvent(ev).final_verdict || explanationForEvent(ev).final_outcome || 'DECISION' }}
+{{ verdictShortLabel({ verdict: explanationForEvent(ev).final_verdict, outcome: explanationForEvent(ev).final_outcome }) }}
 </span>
 <span class="badge badge-neutral">{{ explanationForEvent(ev).security_model || ev.security_model || 'ASF security model' }}</span>
 <span v-if="explanationForEvent(ev).latency_ms != null" class="mono" style="font-size:12px;color:var(--text-muted);">{{ formatDuration(explanationForEvent(ev).latency_ms) }}</span>
@@ -175,6 +175,23 @@ Previous
 <div class="event-explanation-reason">
 <span style="color:var(--text-muted);">Decision reason: </span>
 <span>{{ explanationForEvent(ev).final_reason || ev.reason || 'No reason recorded.' }}</span>
+</div>
+<div v-if="decisionTone(ev) === 'hitl'" style="display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;border:1px solid rgba(210,153,34,.35);border-radius:6px;background:rgba(210,153,34,.08);font-size:12px;color:var(--warning);">
+<span class="pulse-dot"></span>
+<span>Awaiting human decision — this action is paused. Open the <a href="/hitl" style="color:var(--warning);font-weight:600;text-decoration:underline;">HITL panel</a> to approve or block.</span>
+</div>
+<div v-if="explanationForEvent(ev)" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+<div style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);">
+<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:4px;">Assessment</div>
+<div style="font-size:12px;color:var(--text-secondary);line-height:1.5;">{{ assessmentLabel(ev) || explanationForEvent(ev).final_reason || 'No assessment recorded.' }}</div>
+</div>
+<div style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);">
+<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:4px;">Enforcement</div>
+<span :class="verdictBadgeClass(ev)">{{ verdictShortLabel(ev) }}</span>
+<div v-if="decisionTone(ev) === 'hitl'" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Art. 14 Human oversight</div>
+<div v-else-if="decisionTone(ev) === 'deny'" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Tool call not executed</div>
+<div v-else-if="decisionTone(ev) === 'allow'" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Tool call executed</div>
+</div>
 </div>
 </div>
 <div v-if="explanationForEvent(ev)" class="decision-context">

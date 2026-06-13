@@ -178,6 +178,20 @@ window.ASF = (() => {
       if (tone === 'error') return 'badge badge-error';
       return 'badge badge-neutral';
     },
+    verdictShortLabel(ev) {
+      const outcome = String(ev?.outcome || '').toUpperCase();
+      const verdict = String(ev?.verdict || '').toUpperCase();
+      if (outcome === 'KILL_SWITCH') return 'Kill switch';
+      if (outcome === 'HITL_REQUESTED') return 'Pending review';
+      if (outcome === 'HITL_APPROVED') return 'Approved';
+      if (outcome === 'HITL_REJECTED') return 'Rejected';
+      if (outcome === 'BLOCKED' || verdict === 'DENY') return 'Blocked';
+      if (outcome === 'ALLOWED' || verdict === 'ALLOW') return 'Allowed';
+      if (outcome === 'HEURISTIC_CLEAR') return 'Cleared';
+      if (outcome === 'L1.5_BLOCK' || outcome === 'ONNX_BLOCK' || outcome === 'OUTPUT_BLOCK') return 'Blocked';
+      if (verdict === 'HITL' || outcome.startsWith('HITL')) return 'Pending review';
+      return ev?.verdict || ev?.outcome || 'Unknown';
+    },
     evRowClass(ev) {
       const tone = decisionTone(ev);
       if (tone === 'deny') return 'ev-deny';
