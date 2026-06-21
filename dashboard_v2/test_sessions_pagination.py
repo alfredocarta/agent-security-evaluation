@@ -32,7 +32,7 @@ def _create_test_db(path):
     )
     base = datetime(2026, 6, 3, 12, 0, 0)
     for i in range(60):
-        ts = (base - timedelta(seconds=i)).strftime("%Y-%m-%d %H:%M:%S")
+        ts = (base - timedelta(minutes=i * 6)).strftime("%Y-%m-%d %H:%M:%S")
         conn.execute(
             "INSERT INTO hermes_tool_traces "
             "(id, timestamp, agent_id, agent_type, agent_model, session_id, hermes_tool_name, "
@@ -43,7 +43,7 @@ def _create_test_db(path):
             (f"h{i:03d}", ts, f"sess-{i:03d}", f"trace-{i:03d}", f"hash{i:03d}", ts),
         )
 
-    detail_base = datetime(2026, 6, 3, 10, 0, 0)
+    detail_base = datetime(2026, 6, 2, 10, 0, 0)
     for i in range(45):
         ts = (detail_base + timedelta(seconds=i)).strftime("%Y-%m-%d %H:%M:%S")
         conn.execute(
@@ -128,6 +128,21 @@ def test_session_detail_supports_limit_offset_and_cache(tmp_path, monkeypatch):
     assert page1[0].event_id != page2[0].event_id
     assert ("session_events", "hermes-live-agent-session-detail-session", 20, 0) in db._RUNTIME_CACHE
     assert ("session_events", "hermes-live-agent-session-detail-session", 20, 20) in db._RUNTIME_CACHE
+
+
+def test_session_detail_merges_extra_ids(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_test_db(db_path)
+    _point_dashboard_to(db_path, monkeypatch)
+
+    events = asyncio.run(db.get_session_events(
+        "hermes-live-agent-session-sess-000",
+        limit=20,
+        offset=0,
+        extra_ids="hermes-live-agent-session-sess-001",
+    ))
+
+    assert [event.event_id for event in events] == ["h001", "h000"]
 
 
 def test_hitl_approve_reject_persist_decisions_and_remove_pending(tmp_path, monkeypatch):
@@ -1005,8 +1020,8 @@ def test_get_session_events_excludes_interceptor_start_rows(tmp_path, monkeypatc
     assert all((e.outcome or "") != "INTERCEPTOR_START" for e in events)
 
 
-def test_claude_events_with_same_session_id_group_into_one_session(tmp_path, monkeypatch):
-    """Claude events sharing session_id (UUID) must group into one session."""
+def test_claude_events_with_same_transcript_path_group_into_one_session(tmp_path, monkeypatch):
+    """Claude events sharing transcript_path must group into one session."""
     db_path = tmp_path / "asf_test.db"
     conn = sqlite3.connect(db_path)
     conn.execute(
@@ -1022,8 +1037,9 @@ def test_claude_events_with_same_session_id_group_into_one_session(tmp_path, mon
         "outcome TEXT, reason TEXT, trace_id TEXT, audit_hash TEXT, created_at TEXT NOT NULL)"
     )
     
-    # Create Claude events with same session_id (UUID) but >30s gaps
-    session_uuid = "a3ff43fa-1234-5678-9abc-def012345678"
+    # Create Claude events with different generated session ids but one transcript_path.
+    transcript_uuid = "a3ff43fa-1234-5678-9abc-def012345678"
+    transcript_path = f"/Users/alfredo/.claude/projects/demo/{transcript_uuid}.jsonl"
     base_ts = datetime(2026, 6, 10, 10, 0, 0)
     for i, seconds_offset in enumerate([0, 60, 120]):  # 60s and 120s gaps
         ts = (base_ts + timedelta(seconds=seconds_offset)).strftime("%Y-%m-%d %H:%M:%S")
@@ -1036,11 +1052,11 @@ def test_claude_events_with_same_session_id_group_into_one_session(tmp_path, mon
         )
         conn.execute(
             "INSERT INTO claude_tool_traces "
-            "(id, timestamp, agent_id, agent_model, session_id, tool_call_id, claude_tool_name, "
+            "(id, timestamp, agent_id, agent_model, session_id, transcript_path, tool_call_id, claude_tool_name, "
             "asf_tool_name, args_preview, verdict, outcome, reason, trace_id, audit_hash, created_at) "
-            "VALUES (?, ?, 'claude-code-agent', 'claude-sonnet-4-6', ?, 'call-?', 'shell', 'shell', "
+            "VALUES (?, ?, 'claude-code-agent', 'claude-sonnet-4-6', ?, ?, 'call-?', 'shell', 'shell', "
             "'args', 'ALLOW', 'ALLOWED', 'ok', ?, ?, ?)",
-            (f"claude-{i:03d}", ts, session_uuid, f"trace-{i:03d}", audit_hash, ts),
+            (f"claude-{i:03d}", ts, f"generated-session-{i:03d}", transcript_path, f"trace-{i:03d}", audit_hash, ts),
         )
     conn.commit()
     conn.close()
@@ -1048,10 +1064,12 @@ def test_claude_events_with_same_session_id_group_into_one_session(tmp_path, mon
 
     sessions = asyncio.run(db.get_sessions(limit=20, offset=0, agent_id="claude-code-agent"))
 
-    # All events with same session_id should be in ONE session
     assert len(sessions) == 1
-    assert f"session-{session_uuid}" in sessions[0].session_id
+    assert f"transcript-{transcript_uuid}" in sessions[0].session_id
     assert sessions[0].total_events == 3
+
+    events = asyncio.run(db.get_session_events(sessions[0].session_id, limit=20, offset=0))
+    assert len(events) == 3
 
 
 def test_events_without_real_ids_fall_back_to_time_gap_grouping(tmp_path, monkeypatch):
@@ -1080,15 +1098,14 @@ def test_events_without_real_ids_fall_back_to_time_gap_grouping(tmp_path, monkey
 
     sessions = asyncio.run(db.get_sessions(limit=20, offset=0, agent_id="test-agent"))
 
-    # Should have 2 sessions: first two events in one, third in another
-    assert len(sessions) == 2
-    # First session should have 2 events (0s and 20s)
-    assert sessions[0].total_events == 1  # Most recent first (third event at 60s)
-    assert sessions[1].total_events == 2  # First two events (0s and 20s)
+    assert len(sessions) == 1
+    assert sessions[0].total_events == 3
+    assert sessions[0].constituent_ids is not None
+    assert len(sessions[0].constituent_ids) == 2
 
 
-def test_different_task_ids_stay_in_separate_sessions(tmp_path, monkeypatch):
-    """Events with different task_ids must stay in separate sessions."""
+def test_different_task_ids_within_five_minutes_are_merged(tmp_path, monkeypatch):
+    """Nearby sessions for the same agent are merged even when source task ids differ."""
     db_path = tmp_path / "asf_test.db"
     conn = sqlite3.connect(db_path)
     conn.execute(
@@ -1128,8 +1145,9 @@ def test_different_task_ids_stay_in_separate_sessions(tmp_path, monkeypatch):
 
     sessions = asyncio.run(db.get_sessions(limit=20, offset=0, agent_id="hermes-live-agent"))
 
-    # Should have 2 separate sessions, one per task_id
-    assert len(sessions) == 2
-    session_ids = {s.session_id for s in sessions}
-    assert any("task-aaa" in sid for sid in session_ids)
-    assert any("task-bbb" in sid for sid in session_ids)
+    assert len(sessions) == 1
+    assert sessions[0].total_events == 2
+    assert sessions[0].constituent_ids is not None
+    assert len(sessions[0].constituent_ids) == 2
+    assert any("task-aaa" in sid for sid in sessions[0].constituent_ids)
+    assert any("task-bbb" in sid for sid in sessions[0].constituent_ids)

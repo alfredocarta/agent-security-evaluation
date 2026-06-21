@@ -8,7 +8,7 @@ const { createApp } = Vue;
     sessionLoadingMore: false, sessionPageSize: 10, sessionPage: 0, sessionsPage: 0, sessionsPageSize: 10, SESSION_EVENTS_LIMIT: 1000,
     sessionsPageCache: {}, sessionsHasMore: false, sessionsLoading: false, expandedSession: null,
     loadingSession: false, expandedReasons: new Set(), activeEventDetailsId: null, eventExplanations: {}, loadingEventDetails: new Set(), selectedPipelineStages: {}, sessionSearch: '',
-    lastRefresh: '', refreshLabel: '5s', footerText: 'ASF v2', dataAsOf: null, dbSource: '', activeEnv: 'production',
+    lastRefresh: '', refreshLabel: '5s', footerText: ASF.versionStr(), dataAsOf: null, dbSource: '', activeEnv: 'production',
     ENVELOPE_NOISE_KEYS: new Set(['originalfile', 'filepath', 'file_path', 'path', 'type', 'numlines', 'totallines', 'startline', 'offset', 'limit', 'interrupted', 'isimage', 'nooutputexpected', 'sandboxed', 'sandbox_warning', 'mode', 'gitoperation', 'durationms', 'duration_ms', 'returncode', 'exit_code', 'stderr']),
   }),
   computed: {
@@ -79,7 +79,7 @@ const { createApp } = Vue;
       if (!force && cached) {
         this.sessionsPage = safePage; this.sessions = cached.sessions; this.sessionsHasMore = cached.hasMore;
         if (collapse) { this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.closeEventDetails(); }
-        this.sessionsLoading = false; this.footerText = `${this.sessions.length} sessions · ASF v2`; return;
+        this.sessionsLoading = false; this.footerText = ASF.versionStr(); return;
       }
       this.sessionsLoading = true;
       const offset = safePage * pageSize;
@@ -92,7 +92,7 @@ const { createApp } = Vue;
         const pageData = { sessions: visibleRows, hasMore: rows.length === pageSize };
         this.sessionsPageCache = { ...this.sessionsPageCache, [pageKey]: pageData };
         this.sessionsPage = safePage; this.sessions = visibleRows; this.sessionsHasMore = pageData.hasMore;
-        this.footerText = `${this.sessions.length} sessions · ASF v2`;
+        this.footerText = ASF.versionStr();
         if (collapse) { this.expandedSession = null; this.sessionEvents = []; this.sessionPage = 0; this.closeEventDetails(); }
       } finally { this.sessionsLoading = false; }
     },
@@ -109,9 +109,10 @@ const { createApp } = Vue;
       this.sessionPage = 0; this.sessionsPage = 0; await this.refresh();
     },
     prefetchSession(sessionId) {
-      if (this.sessionPageCache[sessionId]) return;
-      this.fetchJson(`/api/sessions/${encodeURIComponent(sessionId)}?limit=${this.SESSION_EVENTS_LIMIT}&offset=0`)
-        .then(events => { if (!this.sessionPageCache[sessionId]) this.sessionPageCache = { ...this.sessionPageCache, [sessionId]: events }; })
+      const cacheKey = this.sessionCacheKey(sessionId);
+      if (this.sessionPageCache[cacheKey]) return;
+      this.fetchJson(this.sessionEventsUrl(sessionId))
+        .then(events => { if (!this.sessionPageCache[cacheKey]) this.sessionPageCache = { ...this.sessionPageCache, [cacheKey]: events }; })
         .catch(() => {});
     },
     async toggleSession(sessionId) {
@@ -121,13 +122,27 @@ const { createApp } = Vue;
     async loadSession(sessionId) {
       // Load the whole session once, then paginate client-side: page navigation is instant
       // (no per-page server round-trip).
-      const cached = this.sessionPageCache[sessionId];
+      const cacheKey = this.sessionCacheKey(sessionId);
+      const cached = this.sessionPageCache[cacheKey];
       if (cached) { this.sessionEvents = cached; this.loadingSession = false; this.sessionLoadingMore = false; return; }
       this.loadingSession = true;
       try {
-        const events = await this.fetchJson(`/api/sessions/${encodeURIComponent(sessionId)}?limit=${this.SESSION_EVENTS_LIMIT}&offset=0`);
-        this.sessionPageCache = { ...this.sessionPageCache, [sessionId]: events }; this.sessionEvents = events;
+        const events = await this.fetchJson(this.sessionEventsUrl(sessionId));
+        this.sessionPageCache = { ...this.sessionPageCache, [cacheKey]: events }; this.sessionEvents = events;
       } finally { this.loadingSession = false; this.sessionLoadingMore = false; }
+    },
+    sessionCacheKey(sessionId) {
+      const session = this.sessions.find(s => s.session_id === sessionId);
+      const ids = Array.isArray(session?.constituent_ids) && session.constituent_ids.length ? session.constituent_ids : [sessionId];
+      return ids.join('|');
+    },
+    sessionEventsUrl(sessionId) {
+      const params = new URLSearchParams({ limit: String(this.SESSION_EVENTS_LIMIT), offset: '0' });
+      const session = this.sessions.find(s => s.session_id === sessionId);
+      const ids = Array.isArray(session?.constituent_ids) ? session.constituent_ids : [];
+      const extraIds = ids.filter(id => id && id !== sessionId);
+      if (extraIds.length) params.set('extra_ids', extraIds.join(','));
+      return `/api/sessions/${encodeURIComponent(sessionId)}?${params.toString()}`;
     },
     nextSessionPage() { if (this.expandedSession && this.sessionPage + 1 < this.expandedSessionTotalPages) this.sessionPage += 1; },
     prevSessionPage() { if (this.expandedSession && this.sessionPage !== 0) this.sessionPage -= 1; },

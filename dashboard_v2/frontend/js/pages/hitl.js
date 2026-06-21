@@ -91,7 +91,7 @@ const { createApp } = Vue;
       hitlExplanationErrors: {},
       lastRefresh: '',
       refreshLabel: '5s',
-      footerText: 'ASF v2',
+      footerText: ASF.versionStr(),
       dataAsOf: null,
       dbSource: '', activeEnv: 'production',
     }),

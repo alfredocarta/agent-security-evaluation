@@ -47,7 +47,8 @@ Refresh
 <tr @click="toggleSession(session.session_id)" @mouseenter="prefetchSession(session.session_id)">
 <td>
 <span style="display:inline-flex;align-items:center;gap:6px;">
-<span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted);">{{ truncate(session.session_id, 48) }}</span>
+<span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted);">{{ truncate(displaySessionId(session.session_id), 48) }}</span>
+<span v-if="Array.isArray(session.constituent_ids) && session.constituent_ids.length > 1" class="badge badge-neutral" :title="session.constituent_ids.length + ' merged sessions'">+{{ session.constituent_ids.length - 1 }}</span>
 <button class="copy-btn" title="Copy full session ID" @click.stop="copyId(session.session_id)">copy</button>
 </span>
 </td>
@@ -84,9 +85,6 @@ are not captured - ASF operates at the tool call boundary.
 <span style="color:var(--text-secondary);">{{ expandedSessionInfo.framework }}</span>
 <span style="color:var(--text-muted);">·</span>
 <span style="color:var(--text-secondary);">Agent model: <span style="color:var(--text-primary);">{{ expandedSessionInfo.model }}</span></span>
-<span style="color:var(--text-muted);">·</span>
-<span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted);" :title="expandedSession">Session: {{ truncate(expandedSession, 60) }}</span>
-<button class="copy-btn" style="font-size:10px;padding:1px 6px;" @click.stop="copyId(expandedSession)" title="Copy full session ID">copy</button>
 </div>
 <div v-if="loadingSession" style="font-size:13px;color:var(--text-muted);">Loading session events…</div>
 <div v-else-if="paginatedSessionEvents.length === 0" style="font-size:13px;color:var(--text-muted);">No events found.</div>
@@ -168,44 +166,22 @@ Previous
 <div class="modal-body session-details-body">
 <div class="event-details-panel drill-content session-details-content">
 <div class="event-explanation-summary" v-if="explanationForEvent(ev)">
-<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-<span :class="verdictBadgeClass({ verdict: explanationForEvent(ev).final_verdict, outcome: explanationForEvent(ev).final_outcome })">
-{{ verdictShortLabel({ verdict: explanationForEvent(ev).final_verdict, outcome: explanationForEvent(ev).final_outcome }) }}
-</span>
-<span class="badge badge-neutral">{{ explanationForEvent(ev).security_model || ev.security_model || 'ASF security model' }}</span>
-<span v-if="explanationForEvent(ev).latency_ms != null" class="mono" style="font-size:12px;color:var(--text-muted);">{{ formatDuration(explanationForEvent(ev).latency_ms) }}</span>
-</div>
-<div class="event-explanation-reason">
-<span style="color:var(--text-muted);">Decision reason: </span>
-<span>{{ explanationForEvent(ev).final_reason || ev.reason || 'No reason recorded.' }}</span>
-</div>
+<div class="panel-section-label">ASSESSMENT</div>
 <div v-if="decisionTone(ev) === 'hitl'" style="display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;border:1px solid rgba(210,153,34,.35);border-radius:6px;background:rgba(210,153,34,.08);font-size:12px;color:var(--warning);">
 <span class="pulse-dot"></span>
 <span>Awaiting human decision — this action is paused. Open the <a href="/hitl" style="color:var(--warning);font-weight:600;text-decoration:underline;">HITL panel</a> to approve or block.</span>
 </div>
-<div v-if="explanationForEvent(ev)" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+<div v-if="explanationForEvent(ev)" style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px;">
 <div style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);">
-<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:4px;">Assessment</div>
-<div style="font-size:12px;color:var(--text-secondary);line-height:1.5;">{{ assessmentLabel(ev) || explanationForEvent(ev).final_reason || 'No assessment recorded.' }}</div>
-</div>
-<div style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);">
-<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:4px;">Enforcement</div>
-<span :class="verdictBadgeClass(ev)">{{ verdictShortLabel(ev) }}</span>
-<div v-if="decisionTone(ev) === 'hitl'" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Art. 14 Human oversight</div>
-<div v-else-if="decisionTone(ev) === 'deny'" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Tool call not executed</div>
-<div v-else-if="decisionTone(ev) === 'allow'" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Tool call executed</div>
+<div v-if="explanationForEvent(ev).confidence != null" style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Confidence: {{ (explanationForEvent(ev).confidence * 100).toFixed(0) }}%</div>
+<div style="font-size:12px;color:var(--text-secondary);line-height:1.5;">{{ explanationForEvent(ev).human_reason || assessmentLabel(ev) || trimAssessmentText(explanationForEvent(ev).final_reason) || 'No assessment recorded.' }}</div>
 </div>
 </div>
 </div>
 <div v-if="explanationForEvent(ev)" class="decision-context">
-<div class="decision-context-title">Decision context</div>
+<div class="decision-context-title panel-section-label">Decision context</div>
 <div class="decision-context-grid">
 <div class="decision-context-meta"><span>Agent</span><b>{{ explanationForEvent(ev).agent_id || ev.agent_id || 'not recorded' }}</b></div>
-<div v-if="explanationForEvent(ev).transcript_path" class="decision-context-meta">
-<span>Transcript</span>
-<b style="font-family:'JetBrains Mono',monospace;font-size:11px;word-break:break-all;">{{ explanationForEvent(ev).transcript_path }}</b>
-<button class="copy-btn" style="font-size:10px;padding:1px 6px;" @click.stop="copyId(explanationForEvent(ev).transcript_path)" title="Copy transcript path">copy</button>
-</div>
 <div class="decision-context-meta"><span>Model</span><b>{{ explanationForEvent(ev).agent_model || ev.agent_model || 'not recorded' }}</b></div>
 <div class="decision-context-meta"><span>Tool</span><b>{{ explanationForEvent(ev).tool_name || ev.tool_name || ev.action || 'not recorded' }}</b></div>
 </div>
@@ -214,8 +190,8 @@ Previous
 <pre class="decision-io-block" :class="{ 'decision-io-empty': !explanationForEvent(ev).tool_input }">{{ formatModalInput(explanationForEvent(ev).tool_input) || 'input not recorded' }}</pre>
 </div>
 <div class="decision-io">
-<div class="decision-io-head"><span>Output</span><span v-if="explanationForEvent(ev).output_truncated" class="badge badge-neutral">truncated</span></div>
-<pre class="decision-io-block" :class="{ 'decision-io-empty': !explanationForEvent(ev).tool_output }">{{ formatModalOutput(explanationForEvent(ev).tool_output) || (decisionTone(ev) === 'deny' ? 'Not executed (blocked before run)' : 'output not recorded') }}</pre>
+<div class="decision-io-head"><span>Output</span><span v-if="!isBlockedEvent(ev) && explanationForEvent(ev).output_truncated" class="badge badge-neutral">truncated</span></div>
+<pre class="decision-io-block" :class="{ 'decision-io-empty': decisionTone(ev) === 'deny' || !formatModalOutput(explanationForEvent(ev).tool_output) }">{{ decisionTone(ev) === 'deny' ? 'Not executed (blocked before run)' : (formatModalOutput(explanationForEvent(ev).tool_output) || 'output not recorded') }}</pre>
 </div>
 </div>
 <div v-if="loadingEventDetails.has(ev.event_id) && !explanationForEvent(ev)" style="font-size:13px;color:var(--text-muted);">Loading explanation…</div>
@@ -231,22 +207,10 @@ Previous
 </button>
 </div>
 <div v-if="selectedPipelineStage(ev)" class="pipeline-card pipeline-detail-card" :class="stageToneClass(selectedPipelineStage(ev))">
-<div class="pipeline-card-hdr">
-<div class="pipeline-detail-title">
-<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
-<span class="pipeline-detail-name">{{ stageLabel(selectedPipelineStage(ev).stage) }}</span>
-<span :class="verdictBadgeClass(selectedPipelineStage(ev))">{{ selectedPipelineStage(ev).verdict || selectedPipelineStage(ev).outcome || 'no verdict' }}</span>
-<span v-if="selectedPipelineStage(ev).terminal" class="badge badge-neutral">final</span>
-</div>
-<div class="pipeline-detail-tech" :title="stageTechnical(selectedPipelineStage(ev).stage)">Technical: {{ stageTechnical(selectedPipelineStage(ev).stage) }}</div>
-</div>
-<div class="pipeline-score">{{ stageConfidenceLabel(selectedPipelineStage(ev)) }}</div>
-</div>
 <div class="pipeline-reason">{{ selectedPipelineStage(ev).reason || 'No reason recorded for this stage.' }}</div>
 <div class="pipeline-meta">
 <span v-if="selectedPipelineStage(ev).timestamp">{{ timeOnly(selectedPipelineStage(ev).timestamp) }}</span>
 <span v-if="selectedPipelineStage(ev).latency_ms != null">{{ formatDuration(selectedPipelineStage(ev).latency_ms) }}</span>
-<span>{{ selectedPipelineStage(ev).outcome || 'no outcome' }}</span>
 </div>
 </div>
 </div>
@@ -255,5 +219,3 @@ Previous
 </div>
 </template>
 </div>
-
-</section>

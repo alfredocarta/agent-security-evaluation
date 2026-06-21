@@ -20,3 +20,7 @@ dashboard_v2/graphify-out/
 
 # benchmark run logs
 benchmarks/*.log
+
+# ASF/Hermes temporary artifacts
+dashboard_v2/.asf_write_test
+dashboard_v2/.patch_runner.py

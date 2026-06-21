@@ -6,12 +6,13 @@ const { createApp } = Vue;
     data: () => ({
       metrics: {}, compliance: [], articleEvents: [], articleCache: {}, articleHasMore: {},
       articleLoadingMore: false, articlePageSize: 20, expandedArticle: null, loadingArticle: false,
-      lastRefresh: '', refreshLabel: '5s', footerText: 'ASF v2', dataAsOf: null, dbSource: '', activeEnv: 'production',
+      lastRefresh: '', refreshLabel: '5s', footerText: ASF.versionStr(), dataAsOf: null, dbSource: '', activeEnv: 'production',
     }),
     mounted() { this.refresh(); setInterval(this.refresh, 5000); },
     methods: {
       ...ASF.methods,
       async refresh() {
+        this.loadProvenance();
         const [metrics, compliance] = await Promise.all([this.fetchJson('/api/metrics'), this.fetchJson('/api/compliance')]);
         this.metrics = metrics; this.compliance = compliance;
         this.dataAsOf = metrics.data_as_of || null; this.dbSource = metrics.db_source || '';

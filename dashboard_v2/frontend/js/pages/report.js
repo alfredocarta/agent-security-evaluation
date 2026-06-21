@@ -3,7 +3,7 @@ const { createApp } = Vue;
   const content = await ASF.loadSection('report');
   createApp({
     template: ASF.shell('report', 'Daily Report', content),
-    data: () => ({ dailyReport: {}, reportDate: '', reportLoading: false, lastRefresh: '', refreshLabel: '5s', footerText: 'ASF v2', dataAsOf: null, dbSource: '', activeEnv: 'production' }),
+    data: () => ({ dailyReport: {}, reportDate: '', reportLoading: false, lastRefresh: '', refreshLabel: '5s', footerText: ASF.versionStr(), dataAsOf: null, dbSource: '', activeEnv: 'production' }),
     mounted() { this.loadDailyReport(); setInterval(() => this.loadDailyReport(this.reportDate || undefined, { silent: true }), 5000); },
     methods: {
       ...ASF.methods,

@@ -24,5 +24,6 @@ async def session_events(
     session_id: str,
     limit: int = Query(default=20, ge=1, le=2000),
     offset: int = Query(default=0, ge=0),
+    extra_ids: str = Query(default=""),
 ):
-    return await get_session_events(session_id, limit=limit, offset=offset)
+    return await get_session_events(session_id, limit=limit, offset=offset, extra_ids=extra_ids)

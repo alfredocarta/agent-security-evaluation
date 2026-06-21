@@ -29,7 +29,7 @@ from dashboard.metrics import (
 )
 from dashboard.compliance import build_compliance_mapping, compliance_to_df
 from dashboard.session_replay import (
-    list_sessions, get_session_timeline, build_pipeline_trace, STATUS_BADGE
+    list_sessions, get_timeline, build_pipeline_trace, STATUS_BADGE
 )
 
 
@@ -293,7 +293,7 @@ elif PAGE == "🔄 Session Reconstruction":
     )
 
     if selected_key:
-        timeline = get_session_timeline(df, selected_key)
+        timeline = get_timeline(df, selected_key)
         if not timeline.empty:
             st.markdown(f"**Session key:** `{selected_key}`")
             row = sessions[sessions["session_key"] == selected_key].iloc[0]
@@ -358,7 +358,7 @@ elif PAGE == "🔬 Trace / Pipeline Detail":
 
         # raw events for this session
         with st.expander("Raw events for this session"):
-            timeline = get_session_timeline(df, selected_key)
+            timeline = get_timeline(df, selected_key)
             st.dataframe(timeline, use_container_width=True, hide_index=True)
 
 

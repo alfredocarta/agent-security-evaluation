@@ -1,4 +1,6 @@
 window.ASF = (() => {
+  let _asfVersionStr = 'ASF';
+
   const navItems = [
     { id: 'overview', label: 'Overview', href: '/overview', icon: '<path d="M1 1h6v6H1V1zm7 0h6v6H8V1zM1 8h6v6H1V8zm7 0h6v6H8V8z"/>' },
     { id: 'sessions', label: 'Audit Trail', href: '/sessions', icon: '<path d="M1 2h13v2H1V2zm0 4h13v2H1V6zm0 4h9v2H1v-2z"/>' },
@@ -24,7 +26,7 @@ window.ASF = (() => {
           </div>
           <nav class="sidebar-nav">${nav}</nav>
           <div class="sidebar-footer">
-            <div style="font-size:11px;color:var(--text-muted);">{{ footerText || 'ASF v2' }}</div>
+            <div style="font-size:11px;color:var(--text-muted);">{{ footerText || defaultFooterText() }}</div>
           </div>
         </aside>
         <div class="content-wrapper">
@@ -72,6 +74,12 @@ window.ASF = (() => {
     const r = await fetch(path);
     if (!r.ok) throw new Error(`${path} ${r.status}`);
     return r.json();
+  }
+  function formatAsfVersion(version, gitHash) {
+    const semver = String(version || '').trim().replace(/^ASF v/i, '').replace(/^v/i, '');
+    if (!semver) return '';
+    const hash = gitHash && gitHash !== 'unknown' ? `-${gitHash}` : '';
+    return `ASF v${semver}${hash}`;
   }
   function parseUtcDate(v) {
     if (!v) return null;
@@ -159,6 +167,8 @@ window.ASF = (() => {
         this.dbSource = p.db_source || '';
         this.dataAsOf = p.data_as_of || null;
         this.activeEnv = e.active_env || 'production';
+        _asfVersionStr = e.asf_version || formatAsfVersion(e.version, e.git_hash) || _asfVersionStr;
+        this.footerText = _asfVersionStr;
       } catch (_e) { /* keep previous provenance on transient error */ }
     },
     async switchEnv(name) {
@@ -180,6 +190,17 @@ window.ASF = (() => {
     stageLabel(stage) { return stageDisplay(stage).label; },
     stageTechnical(stage) { return stageDisplay(stage).technical; },
     stageShortTech(stage) { return stageDisplay(stage).shortTech; },
+    defaultFooterText() { return _asfVersionStr; },
+    trimAssessmentText(raw) {
+      if (!raw) return 'No assessment recorded.';
+      let s = raw;
+      // strip known stage prefixes
+      s = s.replace(/^(content analysis|injection guard|statistical check|known patterns|llm review|onnx scan|quick screening|output check)\s*:\s*/i, '');
+      s = s.replace(/^stage\s+[\d.]+[ab]?\s+\w[\w\s]*:\s*/i, '');
+      // strip input preview tail
+      s = s.replace(/\s*\|\s*input\[.*$/i, '');
+      return s.trim() || 'No assessment recorded.';
+    },
     formatDuration(ms) {
       ms = Number(ms) || 0;
       if (ms < 1000) return `${Math.round(ms)}ms`;
@@ -193,6 +214,14 @@ window.ASF = (() => {
       return `${((isBlocked ? blocked : allowed) / t) * 100}%`;
     },
     truncate(v, n) { v = v || ''; return v.length > n ? v.slice(0, n) + '…' : v; },
+    displaySessionId(id) {
+      const PREFIXES = ['claude-code-agent-session-', 'claude-code-agent-transcript-', 'hermes-live-agent-task-'];
+      const s = id || '';
+      for (const p of PREFIXES) {
+        if (s.startsWith(p)) return s.slice(p.length);
+      }
+      return s;
+    },
     formatTime(v) { const d = parseUtcDate(v); return d ? d.toLocaleString() : ''; },
     timeOnly(v) { const d = parseUtcDate(v); return d ? d.toLocaleTimeString() : ''; },
     decisionTone,
@@ -273,5 +302,5 @@ window.ASF = (() => {
       return '#64748b';
     },
   };
-  return { shell, loadSection, fetchJson, methods, stageDisplay, meaningfulPipeline };
+  return { shell, loadSection, fetchJson, methods, stageDisplay, meaningfulPipeline, versionStr: () => _asfVersionStr };
 })();

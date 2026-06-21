@@ -7,7 +7,7 @@ const { createApp } = Vue;
       metrics: {},
       lastRefresh: '',
       refreshLabel: '5s',
-      footerText: 'ASF v2',
+      footerText: ASF.versionStr(),
       dataAsOf: null,
       dbSource: '', activeEnv: 'production',
       refreshInterval: null,
@@ -62,6 +62,7 @@ const { createApp } = Vue;
         }
       },
       async refresh() {
+        this.loadProvenance();
         this.metrics = await this.fetchJson('/api/metrics');
         this.dataAsOf = this.metrics.data_as_of || null;
         this.dbSource = this.metrics.db_source || '';

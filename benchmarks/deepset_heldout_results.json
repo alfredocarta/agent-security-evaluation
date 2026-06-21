@@ -1,0 +1,75 @@
+{
+  "dataset": "deepset/prompt-injections",
+  "split": "test (held-out)",
+  "n_samples": 116,
+  "n_injection": 60,
+  "n_benign": 56,
+  "note": "Campioni non usati nel fine-tuning di DeBERTa (HF test split)",
+  "results": [
+    {
+      "configuration": "ASF L1.5 only",
+      "recall": 0.0,
+      "fpr": 0.0,
+      "precision": 0,
+      "f1": 0,
+      "avg_latency_ms": 3.4,
+      "n_samples": 116,
+      "tp": 0,
+      "fp": 0,
+      "tn": 56,
+      "fn": 60
+    },
+    {
+      "configuration": "ASF Stage 1+2+2.5",
+      "recall": 0.0833,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.1538,
+      "avg_latency_ms": 19.0,
+      "n_samples": 116,
+      "tp": 5,
+      "fp": 0,
+      "tn": 56,
+      "fn": 55
+    },
+    {
+      "configuration": "ASF Always-Stage25",
+      "recall": 0.8667,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.9286,
+      "avg_latency_ms": 70.5,
+      "n_samples": 116,
+      "tp": 52,
+      "fp": 0,
+      "tn": 56,
+      "fn": 8
+    },
+    {
+      "configuration": "ONNX Prompt Guard 86M",
+      "recall": 0.1667,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.2857,
+      "avg_latency_ms": 54.7,
+      "n_samples": 116,
+      "tp": 10,
+      "fp": 0,
+      "tn": 56,
+      "fn": 50
+    },
+    {
+      "configuration": "ASF L1.5 + ONNX (union)",
+      "recall": 0.1667,
+      "fpr": 0.0,
+      "precision": 1.0,
+      "f1": 0.2857,
+      "avg_latency_ms": 25.4,
+      "n_samples": 116,
+      "tp": 10,
+      "fp": 0,
+      "tn": 56,
+      "fn": 50
+    }
+  ]
+}

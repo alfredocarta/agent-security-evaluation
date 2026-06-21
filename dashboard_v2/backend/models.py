@@ -10,6 +10,7 @@ class AuditEvent(BaseModel):
     action: str
     outcome: str
     reason: str
+    human_reason: str | None = None
     trace_id: str | None = None
     session_id: str | None = None
     latency_ms: int | None = None
@@ -49,6 +50,7 @@ class EventExplanation(BaseModel):
     final_verdict: str | None = None
     final_outcome: str | None = None
     final_reason: str = ""
+    human_reason: str | None = None
     security_model: str | None = None
     latency_ms: int | None = None
     transcript_path: str | None = None
@@ -67,6 +69,7 @@ class SessionSummary(BaseModel):
     allowed_count: int
     hitl_count: int
     duration_ms: int
+    constituent_ids: list[str] | None = None
 
 
 class KPIMetrics(BaseModel):

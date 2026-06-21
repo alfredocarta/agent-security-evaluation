@@ -102,7 +102,7 @@ def list_sessions(df: pd.DataFrame) -> pd.DataFrame:
 # Session timeline
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_session_timeline(df: pd.DataFrame, session_key: str) -> pd.DataFrame:
+def get_timeline(df: pd.DataFrame, session_key: str) -> pd.DataFrame:
     """Return ordered events for one session, formatted for display."""
     if df.empty or "session_key" not in df.columns:
         return pd.DataFrame()

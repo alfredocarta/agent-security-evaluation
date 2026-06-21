@@ -67,13 +67,28 @@ async def compliance_page():
     return _page("compliance")
 
 
+@app.get("/eu-ai-act")
+async def eu_ai_act_page():
+    return _page("compliance")
+
+
 @app.get("/hitl")
 async def hitl_page():
     return _page("hitl")
 
 
+@app.get("/human-oversight")
+async def human_oversight_page():
+    return _page("hitl")
+
+
 @app.get("/sessions")
 async def sessions_page():
+    return _page("sessions")
+
+
+@app.get("/audit")
+async def audit_page():
     return _page("sessions")
 
 

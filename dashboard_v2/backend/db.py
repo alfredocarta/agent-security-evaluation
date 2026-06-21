@@ -11,6 +11,7 @@ from typing import Any
 
 import aiosqlite
 
+from .version import get_asf_version_info
 from .models import (
     AuditEvent,
     EventExplanation,
@@ -84,6 +85,9 @@ def _ensure_query_indexes(conn: sqlite3.Connection, db_path: Path) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_trail_prev_hash ON audit_trail(prev_hash)")
     # hash index: enables prefix-LIKE lookups in get_session_events without full table scans
     conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_trail_hash ON audit_trail(hash)")
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(audit_trail)").fetchall()}
+    if "trace_id" in existing:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_trail_trace_ts ON audit_trail(trace_id, timestamp ASC)")
     if _has_hermes_trace_schema(db_path):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_hermes_tool_traces_session_ts ON hermes_tool_traces(session_id, timestamp ASC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_hermes_tool_traces_trace_ts ON hermes_tool_traces(trace_id, timestamp ASC)")
@@ -254,6 +258,7 @@ def get_env_info() -> dict[str, Any]:
         "active_env": _ACTIVE_ENV,
         "available": sorted(_VALID_ENVS),
         "db_path": str(get_db_path()),
+        **get_asf_version_info(),
     }
 
 
@@ -282,6 +287,13 @@ async def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS idx_audit_trail_prev_hash "
             "ON audit_trail(prev_hash)"
         )
+        cursor = await conn.execute("PRAGMA table_info(audit_trail)")
+        existing = {row[1] for row in await cursor.fetchall()}
+        if "trace_id" in existing:
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_audit_trail_trace_ts "
+                "ON audit_trail(trace_id, timestamp ASC)"
+            )
         await conn.execute(
             "CREATE TABLE IF NOT EXISTS dashboard_hitl_decisions ("
             "event_id TEXT PRIMARY KEY, "
@@ -310,6 +322,16 @@ def _parse_timestamp(value: str | None) -> datetime | None:
         return datetime.fromisoformat(value)
     except ValueError:
         return None
+
+
+def _transcript_session_value(transcript_path: str | None) -> str:
+    value = (transcript_path or "").strip()
+    if not value:
+        return ""
+    value = os.path.basename(value)
+    if value.endswith(".jsonl"):
+        value = value[:-6]
+    return value
 
 
 def _dashboard_cache_is_stale(db_path: Path, cache: dict[str, Any]) -> bool:
@@ -341,7 +363,7 @@ def _sessionize(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Group events into sessions using real identifiers when available, else time-gap heuristic.
     
     Session key priority:
-    - Claude events (claude_tool_traces): session_id (stable UUID per conversation)
+    - Claude events (claude_tool_traces): transcript_path (stable per conversation)
     - Hermes events (hermes_tool_traces): session_id if non-empty, else task_id
     - Fallback: 30-second time-gap heuristic for events with no real identifier
     
@@ -412,8 +434,8 @@ def _enrich_with_chain_data(rows: list[dict[str, Any]]) -> None:
         if row.get("outcome") != "INTERCEPTOR_START":
             continue
         start_ts = _parse_timestamp(row.get("timestamp"))
-        trace_id = f"trace-{(row.get('hash') or '')[:12]}"
-        row["trace_id"] = trace_id
+        trace_id = row.get("trace_id") or f"trace-{(row.get('hash') or '')[:12]}"
+        row["trace_id"] = row.get("trace_id") or trace_id
 
         current = row
         for _ in range(30):
@@ -423,7 +445,7 @@ def _enrich_with_chain_data(rows: list[dict[str, Any]]) -> None:
             nxt = by_prev_hash.get(h)
             if not nxt:
                 break
-            nxt["trace_id"] = trace_id
+            nxt["trace_id"] = nxt.get("trace_id") or trace_id
             if nxt.get("outcome") in TERMINAL_OUTCOMES:
                 if start_ts:
                     end_ts = _parse_timestamp(nxt.get("timestamp"))
@@ -550,6 +572,7 @@ def _normalize_event(row: dict[str, Any]) -> AuditEvent:
         action=row.get("action") or "",
         outcome=outcome,
         reason=reason,
+        human_reason=row.get("human_reason"),
         trace_id=row.get("trace_id"),
         session_id=row.get("session_id"),
         latency_ms=row.get("latency_ms"),
@@ -860,7 +883,7 @@ def _event_explanation_from_pipeline(
             pipeline=[PipelineStage(stage="Unknown stage", reason="No explanation data found for this event.", terminal=True)],
         )
     context = context_event or final
-    return EventExplanation(
+    explanation = EventExplanation(
         event_id=event_id,
         trace_id=context.trace_id or final.trace_id,
         session_id=context.session_id or final.session_id,
@@ -878,40 +901,64 @@ def _event_explanation_from_pipeline(
         latency_ms=final.latency_ms,
         pipeline=_single_terminal_pipeline(_expand_inferred_pipeline_stages(pipeline_events) or [_stage_from_event(final)]),
     )
+    explanation.human_reason = final.human_reason if hasattr(final, 'human_reason') else None
+    return explanation
+
+
+def _audit_trail_select_columns(conn: sqlite3.Connection) -> str:
+    columns = ["hash", "timestamp", "agent_id", "action", "outcome", "reason", "prev_hash"]
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(audit_trail)").fetchall()}
+    if "human_reason" in existing:
+        columns.insert(6, "human_reason")
+    if "trace_id" in existing:
+        columns.append("trace_id")
+    return ", ".join(columns)
 
 
 def _audit_chain_for_event(conn: sqlite3.Connection, event_id: str) -> list[dict[str, Any]]:
+    audit_columns = _audit_trail_select_columns(conn)
     terminal = conn.execute(
-        "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
-        "FROM audit_trail WHERE hash = ?",
+        f"SELECT {audit_columns} FROM audit_trail WHERE hash = ?",
         (event_id,),
     ).fetchone()
     if terminal is None:
         return []
 
-    rows: list[dict[str, Any]] = [dict(terminal)]
-    current_prev = rows[0].get("prev_hash")
-    seen = {rows[0].get("hash")}
-    for _ in range(40):
-        if not current_prev or current_prev in seen:
-            break
-        row = conn.execute(
-            "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
-            "FROM audit_trail WHERE hash = ?",
-            (current_prev,),
-        ).fetchone()
-        if row is None:
-            break
-        row_dict = dict(row)
-        rows.append(row_dict)
-        seen.add(row_dict.get("hash"))
-        if row_dict.get("outcome") == "INTERCEPTOR_START":
-            break
-        current_prev = row_dict.get("prev_hash")
+    terminal_dict = dict(terminal)
+    tid = terminal_dict.get("trace_id")
 
-    rows.reverse()
+    if tid:
+        rows = [
+            dict(row) for row in conn.execute(
+                f"SELECT {audit_columns} FROM audit_trail WHERE trace_id = ? ORDER BY timestamp ASC",
+                (tid,),
+            ).fetchall()
+        ]
+        if not rows:
+            rows = [terminal_dict]
+    else:
+        rows = [terminal_dict]
+        current_prev = terminal_dict.get("prev_hash")
+        seen = {terminal_dict.get("hash")}
+        for _ in range(40):
+            if not current_prev or current_prev in seen:
+                break
+            row = conn.execute(
+                f"SELECT {audit_columns} FROM audit_trail WHERE hash = ?",
+                (current_prev,),
+            ).fetchone()
+            if row is None:
+                break
+            row_dict = dict(row)
+            rows.append(row_dict)
+            seen.add(row_dict.get("hash"))
+            if row_dict.get("outcome") == "INTERCEPTOR_START":
+                break
+            current_prev = row_dict.get("prev_hash")
+        rows.reverse()
+
     _enrich_with_chain_data(rows)
-    trace_id = next((row.get("trace_id") for row in rows if row.get("trace_id")), None)
+    trace_id = tid or next((row.get("trace_id") for row in rows if row.get("trace_id")), None)
     session_id = f"{rows[-1].get('agent_id') or 'unknown-agent'}-{(trace_id or event_id)[:18]}"
     for row in rows:
         row["trace_id"] = row.get("trace_id") or trace_id or f"trace-{(rows[0].get('hash') or event_id)[:12]}"
@@ -1101,7 +1148,37 @@ async def get_event_explanation(event_id: str) -> EventExplanation:
     return _cache_set(cache_key, explanation, ttl=300.0)
 
 
-async def get_session_events(session_id: str, limit: int = 20, offset: int = 0) -> list[AuditEvent]:
+async def get_session_events(
+    session_id: str,
+    limit: int = 20,
+    offset: int = 0,
+    extra_ids: list[str] | str | None = None,
+) -> list[AuditEvent]:
+    if isinstance(extra_ids, str):
+        parsed_extra_ids = [sid.strip() for sid in extra_ids.split(",") if sid.strip()]
+    else:
+        parsed_extra_ids = [sid for sid in (extra_ids or []) if sid]
+    session_ids = [session_id] + [sid for sid in parsed_extra_ids if sid != session_id]
+    if len(session_ids) > 1:
+        limit = max(1, min(int(limit), 2000))
+        offset = max(0, int(offset))
+        cache_key = ("session_events", tuple(session_ids), limit, offset)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        merged: dict[str, AuditEvent] = {}
+        for sid in session_ids:
+            for event in await _get_session_events_one(sid, limit=2000, offset=0):
+                merged[event.event_id] = event
+        events = list(merged.values())
+        events.sort(key=lambda event: _parse_timestamp(event.timestamp) or datetime.min)
+        return _cache_set(cache_key, events[offset:offset + limit], ttl=300.0)
+
+    return await _get_session_events_one(session_id, limit=limit, offset=offset)
+
+
+async def _get_session_events_one(session_id: str, limit: int = 20, offset: int = 0) -> list[AuditEvent]:
     # Cap high enough to load a whole session in one call; the frontend then paginates
     # client-side so page navigation needs no further round-trips.
     limit = max(1, min(int(limit), 2000))
@@ -1125,13 +1202,16 @@ async def get_session_events(session_id: str, limit: int = 20, offset: int = 0) 
         
         # Parse session_id to determine the type. Agent ids contain hyphens
         # (e.g. hermes-live-agent), so split on the literal marker, not on "-".
-        # Formats: {agent}-session-{id}, {agent}-task-{id}, {agent}-group-{key}
+        # Formats: {agent}-session-{id}, {agent}-task-{id}, {agent}-transcript-{id}, {agent}-group-{key}
         if "-session-" in session_id:
             agent_id, session_value = session_id.split("-session-", 1)
             session_type = "session"
         elif "-task-" in session_id:
             agent_id, session_value = session_id.split("-task-", 1)
             session_type = "task"
+        elif "-transcript-" in session_id:
+            agent_id, session_value = session_id.split("-transcript-", 1)
+            session_type = "transcript"
         elif "-group-" in session_id:
             agent_id, session_value = session_id.split("-group-", 1)
             session_type = "group"
@@ -1139,7 +1219,7 @@ async def get_session_events(session_id: str, limit: int = 20, offset: int = 0) 
             agent_id, session_value, session_type = session_id, "", ""
 
         # Determine if this is a real session identifier or a time-gap group
-        is_real_session = session_type in ("session", "task")
+        is_real_session = session_type in ("session", "task", "transcript")
         is_group_session = session_type == "group"
         is_hermes_session = "hermes" in agent_id or session_id.startswith("hermes-")
         
@@ -1152,6 +1232,22 @@ async def get_session_events(session_id: str, limit: int = 20, offset: int = 0) 
                 for row in conn.execute(
                     "SELECT audit_hash FROM claude_tool_traces WHERE session_id = ? AND audit_hash IS NOT NULL",
                     (session_value,)
+                ).fetchall():
+                    if row[0]:
+                        audit_hashes.add(row[0])
+
+            if session_type == "transcript" and _has_claude_trace_schema(db_path):
+                for row in conn.execute(
+                    "SELECT audit_hash FROM claude_tool_traces "
+                    "WHERE audit_hash IS NOT NULL AND ("
+                    "transcript_path = ? OR transcript_path = ? OR transcript_path LIKE ? OR transcript_path LIKE ?"
+                    ")",
+                    (
+                        session_value,
+                        f"{session_value}.jsonl",
+                        f"%/{session_value}",
+                        f"%/{session_value}.jsonl",
+                    ),
                 ).fetchall():
                     if row[0]:
                         audit_hashes.add(row[0])
@@ -1273,15 +1369,28 @@ async def get_session_events(session_id: str, limit: int = 20, offset: int = 0) 
                 events.extend(_normalize_hermes_trace(row) for row in hermes_rows)
         
         # Also fetch Claude trace rows if this is a Claude session
-        if session_type == "session" and _has_claude_trace_schema(db_path):
+        if session_type in ("session", "transcript") and _has_claude_trace_schema(db_path):
+            if session_type == "transcript":
+                claude_where = (
+                    "WHERE transcript_path = ? OR transcript_path = ? OR transcript_path LIKE ? OR transcript_path LIKE ?"
+                )
+                claude_params: list[Any] = [
+                    session_value,
+                    f"{session_value}.jsonl",
+                    f"%/{session_value}",
+                    f"%/{session_value}.jsonl",
+                ]
+            else:
+                claude_where = "WHERE session_id = ?"
+                claude_params = [session_value]
             claude_rows = [dict(row) for row in conn.execute(
                 "SELECT id, timestamp, agent_id, agent_model, session_id, transcript_path, tool_call_id, "
                 "claude_tool_name, asf_tool_name, args_preview, output_preview, verdict, outcome, reason, "
                 "trace_id, audit_hash "
                 "FROM claude_tool_traces "
-                "WHERE session_id = ? "
+                f"{claude_where} "
                 "ORDER BY timestamp ASC LIMIT ? OFFSET ?",
-                (session_value, limit, offset),
+                claude_params + [limit, offset],
             ).fetchall()]
             # Claude rows are already included via audit_trail join, but we can enrich if needed
 
@@ -1323,6 +1432,93 @@ def _hermes_group_covered_by_audit(
         if hs <= e + tol and s <= he + tol:
             return True
     return False
+
+
+def _merge_nearby_sessions(summaries: list[SessionSummary]) -> list[SessionSummary]:
+    by_agent: dict[str, list[SessionSummary]] = {}
+    for summary in summaries:
+        by_agent.setdefault(summary.agent_id, []).append(summary)
+
+    merged: list[SessionSummary] = []
+    for agent_sessions in by_agent.values():
+        chronological = sorted(
+            agent_sessions,
+            key=lambda session: _parse_timestamp(session.start_time) or datetime.min,
+        )
+        current: dict[str, Any] | None = None
+
+        for session in chronological:
+            start_ts = _parse_timestamp(session.start_time)
+            end_ts = _parse_timestamp(session.end_time)
+            source_ids = session.constituent_ids or [session.session_id]
+
+            if (
+                current is not None
+                and start_ts is not None
+                and current["end_ts"] is not None
+                and start_ts - current["end_ts"] <= timedelta(seconds=60)
+            ):
+                current["end_ts"] = max(current["end_ts"], end_ts or current["end_ts"])
+                if end_ts is None or current["end_ts"] == end_ts:
+                    current["end_time"] = session.end_time
+                current["total_events"] += session.total_events
+                current["blocked_count"] += session.blocked_count
+                current["allowed_count"] += session.allowed_count
+                current["hitl_count"] += session.hitl_count
+                current["constituent_ids"].extend(source_ids)
+                continue
+
+            if current is not None:
+                merged.append(_session_summary_from_merge_group(current))
+
+            current = {
+                "session_id": session.session_id,
+                "agent_id": session.agent_id,
+                "agent_framework": session.agent_framework,
+                "agent_model": session.agent_model,
+                "start_ts": start_ts,
+                "end_ts": end_ts,
+                "start_time": session.start_time,
+                "end_time": session.end_time,
+                "total_events": session.total_events,
+                "blocked_count": session.blocked_count,
+                "allowed_count": session.allowed_count,
+                "hitl_count": session.hitl_count,
+                "duration_ms": session.duration_ms,
+                "constituent_ids": list(source_ids),
+            }
+
+        if current is not None:
+            merged.append(_session_summary_from_merge_group(current))
+
+    merged.sort(key=lambda session: _parse_timestamp(session.start_time) or datetime.min, reverse=True)
+    return merged
+
+
+def _session_summary_from_merge_group(group: dict[str, Any]) -> SessionSummary:
+    start_ts = group.get("start_ts")
+    end_ts = group.get("end_ts")
+    if len(group["constituent_ids"]) == 1:
+        duration_ms = int(group.get("duration_ms") or 0)
+    elif start_ts is not None and end_ts is not None:
+        duration_ms = max(0, int((end_ts - start_ts).total_seconds() * 1000))
+    else:
+        duration_ms = int(group.get("duration_ms") or 0)
+    constituent_ids = list(dict.fromkeys(group["constituent_ids"]))
+    return SessionSummary(
+        session_id=group["session_id"],
+        agent_id=group["agent_id"],
+        agent_framework=group["agent_framework"],
+        agent_model=group["agent_model"],
+        start_time=group["start_time"],
+        end_time=group["end_time"],
+        total_events=group["total_events"],
+        blocked_count=group["blocked_count"],
+        allowed_count=group["allowed_count"],
+        hitl_count=group["hitl_count"],
+        duration_ms=duration_ms,
+        constituent_ids=constituent_ids,
+    )
 
 
 async def get_sessions(
@@ -1473,16 +1669,17 @@ async def get_sessions(
         # This lets audit_trail rows be grouped by the stable session IDs from trace tables.
         audit_hash_to_session: dict[str, str] = {}
         
-        # Claude: session_id is a stable UUID per conversation
+        # Claude: transcript_path is stable across tool calls in one Claude Code conversation.
         if _has_claude_trace_schema(db_path):
             for row in conn.execute(
-                "SELECT audit_hash, session_id, agent_id FROM claude_tool_traces WHERE audit_hash IS NOT NULL AND session_id IS NOT NULL"
+                "SELECT audit_hash, transcript_path, agent_id FROM claude_tool_traces "
+                "WHERE audit_hash IS NOT NULL AND transcript_path IS NOT NULL"
             ).fetchall():
                 ah = row[0]
-                sid = row[1]
+                transcript = _transcript_session_value(row[1])
                 agent = row[2]
-                if ah and sid and agent:
-                    audit_hash_to_session[ah] = f"{agent}-session-{sid}"
+                if ah and transcript and agent:
+                    audit_hash_to_session[ah] = f"{agent}-transcript-{transcript}"
         
         # Hermes: prefer session_id, else task_id as the session identifier
         if _has_hermes_trace_schema(db_path):
@@ -1630,8 +1827,7 @@ async def get_sessions(
             duration_ms=duration_ms,
         ))
 
-    summaries = hermes_summaries + audit_summaries
-    summaries.sort(key=lambda session: _parse_timestamp(session.start_time) or datetime.min, reverse=True)
+    summaries = _merge_nearby_sessions(hermes_summaries + audit_summaries)
     result = summaries[offset:offset + limit]
     return _cache_set(cache_key, result, ttl=10.0)
 
@@ -1669,12 +1865,15 @@ def _get_hermes_metric_counts(db_path: Path, agent_id: str | None = None) -> dic
             "SUM(CASE WHEN UPPER(COALESCE(verdict, outcome, '')) IN ('BLOCK', 'BLOCKED', 'DENY', 'KILL_SWITCH', 'OUTPUT_BLOCK', 'L1.5_BLOCK') THEN 1 ELSE 0 END) AS blocked, "
             "SUM(CASE WHEN UPPER(COALESCE(verdict, outcome, '')) IN ('ALLOW', 'ALLOWED', 'HEURISTIC_CLEAR') THEN 1 ELSE 0 END) AS allowed, "
             "SUM(CASE WHEN UPPER(COALESCE(verdict, outcome, '')) IN ('HITL', 'HITL_REQUESTED') THEN 1 ELSE 0 END) AS hitl, "
-            "AVG(COALESCE(asf_latency_ms, 0)) AS avg_latency_ms "
+            "AVG(asf_latency_ms) AS avg_latency_ms "
             f"FROM hermes_tool_traces{agent_clause}",
             agent_params,
         ).fetchone()
+        latency_clause = " WHERE asf_latency_ms IS NOT NULL"
+        if agent_id:
+            latency_clause = " WHERE agent_id = ? AND asf_latency_ms IS NOT NULL"
         latencies = [int(r[0] or 0) for r in conn.execute(
-            f"SELECT COALESCE(asf_latency_ms, 0) FROM hermes_tool_traces{agent_clause} ORDER BY COALESCE(asf_latency_ms, 0)",
+            f"SELECT asf_latency_ms FROM hermes_tool_traces{latency_clause} ORDER BY asf_latency_ms",
             agent_params,
         ).fetchall()]
 
@@ -1691,6 +1890,41 @@ def _get_hermes_metric_counts(db_path: Path, agent_id: str | None = None) -> dic
         "hitl": int(row["hitl"] or 0),
         "avg_latency_ms": float(row["avg_latency_ms"] or 0.0),
         "p95_latency_ms": p95_latency_ms,
+    }
+
+
+def _get_audit_latency_metrics(db_path: Path, agent_id: str | None = None) -> dict[str, float]:
+    if not _has_audit_schema(db_path):
+        return {"avg_latency_ms": 0.0, "p95_latency_ms": 0.0}
+
+    agent_clause = " AND s.agent_id = ?" if agent_id else ""
+    agent_params: list[Any] = [agent_id] if agent_id else []
+    try:
+        with sqlite3.connect(db_path, timeout=2) as conn:
+            latencies = [
+                float(row[0] or 0.0)
+                for row in conn.execute(
+                    "SELECT "
+                    "(julianday(t.timestamp) - julianday(s.timestamp)) * 86400000.0 AS latency_ms "
+                    "FROM audit_trail s "
+                    "JOIN audit_trail t ON t.trace_id = s.trace_id "
+                    "WHERE s.outcome = 'INTERCEPTOR_START' "
+                    "AND t.outcome != 'INTERCEPTOR_START' "
+                    f"AND s.trace_id IS NOT NULL{agent_clause}",
+                    agent_params,
+                ).fetchall()
+            ]
+    except sqlite3.Error:
+        return {"avg_latency_ms": 0.0, "p95_latency_ms": 0.0}
+
+    if not latencies:
+        return {"avg_latency_ms": 0.0, "p95_latency_ms": 0.0}
+
+    latencies.sort()
+    p95_idx = min(len(latencies) - 1, int(round((len(latencies) - 1) * 0.95)))
+    return {
+        "avg_latency_ms": sum(latencies) / len(latencies),
+        "p95_latency_ms": float(latencies[p95_idx]),
     }
 
 
@@ -1768,6 +2002,7 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
     db_path = get_db_path()
     db_source = str(db_path).rsplit("/", 1)[-1] or str(db_path)
     hermes = _get_hermes_metric_counts(db_path, agent_id)
+    audit_latency = _get_audit_latency_metrics(db_path, agent_id)
 
     # The production audit DB is ~4GB / 8.9M rows. For dashboard KPIs, use the
     # precomputed cache so first paint does not block on full-table aggregates,
@@ -1826,8 +2061,8 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
             blocked_count=blocked,
             allowed_count=allowed,
             hitl_count=hitl,
-            avg_latency_ms=hermes["avg_latency_ms"],
-            p95_latency_ms=hermes["p95_latency_ms"],
+            avg_latency_ms=audit_latency["avg_latency_ms"],
+            p95_latency_ms=audit_latency["p95_latency_ms"],
             tool_calls_last_24h=tool_calls_last_24h,
             calls_trend_pct=calls_trend_pct,
             data_as_of=max_ts.isoformat() if max_ts else None,
@@ -1844,8 +2079,8 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
             blocked_count=hermes["blocked"],
             allowed_count=hermes["allowed"],
             hitl_count=hitl,
-            avg_latency_ms=hermes["avg_latency_ms"],
-            p95_latency_ms=hermes["p95_latency_ms"],
+            avg_latency_ms=audit_latency["avg_latency_ms"],
+            p95_latency_ms=audit_latency["p95_latency_ms"],
             tool_calls_last_24h=hermes["last_24h"],
             calls_trend_pct=None,
             data_as_of=hermes.get("max_ts"),
@@ -1893,8 +2128,8 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
         blocked_count=blocked,
         allowed_count=allowed,
         hitl_count=hitl,
-        avg_latency_ms=hermes["avg_latency_ms"],
-        p95_latency_ms=hermes["p95_latency_ms"],
+        avg_latency_ms=audit_latency["avg_latency_ms"],
+        p95_latency_ms=audit_latency["p95_latency_ms"],
         tool_calls_last_24h=audit_calls_last_24h,
         calls_trend_pct=None,
         data_as_of=str(latest_ts) if latest_ts else hermes.get("max_ts"),
