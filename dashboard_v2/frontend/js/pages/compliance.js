@@ -6,7 +6,7 @@ const { createApp } = Vue;
     data: () => ({
       metrics: {}, compliance: [],
       expandedArticle: null, loadingArticle: false,
-      timelineWindow: '7d', timelineAgentFilter: '', timelineOutcomeFilter: '',
+      timelineWindow: '24h', timelineAgentFilter: '', timelineOutcomeFilter: '',
       timelineAllEvents: [], expandedClusters: new Set(),
       lastRefresh: '', refreshLabel: '5s', footerText: ASF.versionStr(), dataAsOf: null, dbSource: '', activeEnv: 'production',
     }),

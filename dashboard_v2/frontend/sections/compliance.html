@@ -74,7 +74,6 @@ This view maps recorded ASF audit events to EU AI Act articles as supporting evi
 <div class="timeline-event-main" @click="toggleCluster(item.key)">
 <span class="mono timeline-time">{{ timeOnly(item.timestamp) }}</span>
 <span class="timeline-cluster-summary">{{ item.count }} events clustered</span>
-<span class="badge badge-neutral">click to expand</span>
 </div>
 </template>
 <template v-else-if="item.type === 'cluster-expanded'">
@@ -82,7 +81,6 @@ This view maps recorded ASF audit events to EU AI Act articles as supporting evi
 <div class="timeline-event-main" @click="toggleCluster(item.key)">
 <span class="mono timeline-time">{{ timeOnly(item.timestamp) }}</span>
 <span class="timeline-cluster-summary">{{ item.count }} events expanded</span>
-<span class="badge badge-neutral">click to collapse</span>
 </div>
 </template>
 <template v-else>
