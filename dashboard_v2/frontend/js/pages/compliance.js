@@ -7,7 +7,7 @@ const { createApp } = Vue;
       metrics: {}, compliance: [],
       expandedArticle: null, loadingArticle: false,
       timelineWindow: '24h', timelineAgentFilter: '', timelineOutcomeFilter: '',
-      timelineAllEvents: [], expandedClusters: new Set(),
+      timelineAllEvents: [], modalCluster: null,
       lastRefresh: '', refreshLabel: '5s', footerText: ASF.versionStr(), dataAsOf: null, dbSource: '', activeEnv: 'production',
     }),
     mounted() { this.refresh(); setInterval(this.refresh, 5000); },
@@ -26,17 +26,15 @@ const { createApp } = Vue;
         for (const ev of filtered) {
           const time = this.timelineTime(ev);
           const bucket = Math.floor(time / threshold) * threshold;
-          const key = `${this.timelineWindow}:${bucket}`;
+          const agentId = ev.agent_id || '__none__';
+          const key = `${this.timelineWindow}:${bucket}:${agentId}`;
           if (!buckets.has(key)) buckets.set(key, []);
           buckets.get(key).push(ev);
         }
         const items = [];
         for (const [key, events] of buckets.entries()) {
-          if (events.length > 1 && !this.expandedClusters.has(key)) {
+          if (events.length > 1) {
             items.push({ type: 'cluster', key, events, count: events.length, timestamp: events[0].timestamp });
-          } else if (events.length > 1) {
-            items.push({ type: 'cluster-expanded', key, events, count: events.length, timestamp: events[0].timestamp });
-            events.forEach(ev => items.push({ type: 'event', key: ev.event_id || `${key}:${ev.timestamp}`, event: ev }));
           } else {
             events.forEach(ev => items.push({ type: 'event', key: ev.event_id || `${key}:${ev.timestamp}`, event: ev }));
           }
@@ -65,13 +63,13 @@ const { createApp } = Vue;
         return { cls: 'ev-state-none', label: 'No evidence' };
       },
       async toggleArticle(article) {
-        if (this.expandedArticle === article) { this.expandedArticle = null; this.timelineAllEvents = []; this.expandedClusters = new Set(); return; }
+        if (this.expandedArticle === article) { this.expandedArticle = null; this.timelineAllEvents = []; this.modalCluster = null; return; }
         this.expandedArticle = article; await this.loadArticle(article);
       },
       async loadArticle(article) {
         this.loadingArticle = true;
         try {
-          this.expandedClusters = new Set();
+          this.modalCluster = null;
           this.timelineAllEvents = await this.fetchJson(`/api/compliance/${encodeURIComponent(article)}?limit=500&offset=0&window=${encodeURIComponent(this.timelineWindow)}`);
           if (this.timelineAgentFilter && !this.timelineAgentOptions.includes(this.timelineAgentFilter)) this.timelineAgentFilter = '';
         } finally { this.loadingArticle = false; }
@@ -93,10 +91,24 @@ const { createApp } = Vue;
       timelineItemTime(item) {
         return item.type === 'cluster' ? this.timelineTime(item.events[0]) : this.timelineTime(item.event);
       },
-      toggleCluster(key) {
-        const next = new Set(this.expandedClusters);
-        if (next.has(key)) next.delete(key); else next.add(key);
-        this.expandedClusters = next;
+      timelineLabel(v) {
+        const d = this.parseUtcDate(v);
+        if (!d) return '';
+        if (this.timelineWindow === '7d') {
+          const day = d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: '2-digit' });
+          const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+          return `${day} ${time}`;
+        }
+        if (this.timelineWindow === '24h') {
+          return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+        return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      },
+      openClusterModal(item) {
+        this.modalCluster = item;
+      },
+      closeModal() {
+        this.modalCluster = null;
       },
       timelineColor(ev) {
         const outcome = String(ev?.outcome || ev?.verdict || '').toUpperCase();

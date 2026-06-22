@@ -70,23 +70,16 @@ This view maps recorded ASF audit events to EU AI Act articles as supporting evi
 <div v-else class="timeline-axis">
 <div v-for="item in timelineEvents" :key="item.key" class="timeline-row">
 <template v-if="item.type === 'cluster'">
-<button type="button" class="timeline-dot timeline-dot-cluster" :style="timelineClusterStyle(item)" @click="toggleCluster(item.key)">×{{ item.count }}</button>
-<div class="timeline-event-main" @click="toggleCluster(item.key)">
-<span class="mono timeline-time">{{ timeOnly(item.timestamp) }}</span>
-<span class="timeline-cluster-summary">{{ item.count }} events clustered</span>
-</div>
-</template>
-<template v-else-if="item.type === 'cluster-expanded'">
-<button type="button" class="timeline-dot timeline-dot-cluster" :style="timelineClusterStyle(item)" @click="toggleCluster(item.key)">−{{ item.count }}</button>
-<div class="timeline-event-main" @click="toggleCluster(item.key)">
-<span class="mono timeline-time">{{ timeOnly(item.timestamp) }}</span>
-<span class="timeline-cluster-summary">{{ item.count }} events expanded</span>
+<button type="button" class="timeline-dot timeline-dot-cluster" :style="timelineClusterStyle(item)" @click="openClusterModal(item)">×{{ item.count }}</button>
+<div class="timeline-event-main" @click="openClusterModal(item)">
+<span class="mono timeline-time">{{ timelineLabel(item.timestamp) }}</span>
+<span class="timeline-cluster-summary">{{ item.count }} events — click to open</span>
 </div>
 </template>
 <template v-else>
 <span class="timeline-dot" :style="{ background: timelineColor(item.event) }"></span>
 <div class="timeline-event-main">
-<span class="mono timeline-time">{{ timeOnly(item.event.timestamp) }}</span>
+<span class="mono timeline-time">{{ timelineLabel(item.event.timestamp) }}</span>
 <span class="timeline-tool">{{ item.event.tool_name || item.event.action || 'unknown tool' }}</span>
 <span class="badge timeline-outcome-badge" :style="timelineBadgeStyle(item.event)">{{ item.event.outcome || item.event.verdict || 'UNKNOWN' }}</span>
 <span :class="stageBadgeClass(item.event.stage)">{{ item.event.stage || 'Unknown stage' }}</span>
@@ -112,3 +105,27 @@ This view maps recorded ASF audit events to EU AI Act articles as supporting evi
 </table>
 </div>
 </section>
+<!-- Cluster detail modal -->
+<div v-if="modalCluster" class="modal-backdrop" @click.self="closeModal()">
+<div class="modal-card" style="width:min(780px,100%);max-height:80vh;display:flex;flex-direction:column;">
+<div class="modal-hdr">
+<div class="modal-title">
+<span>{{ modalCluster.count }} events</span>
+<span style="font-size:12px;font-weight:400;color:var(--text-muted);">clustered · {{ timelineLabel(modalCluster.timestamp) }}</span>
+</div>
+<button class="modal-btn" @click="closeModal()" style="min-width:unset;padding:4px 10px;">✕</button>
+</div>
+<div class="modal-body" style="overflow-y:auto;flex:1;padding:14px 18px;display:flex;flex-direction:column;gap:4px;">
+<div v-for="ev in modalCluster.events" :key="ev.event_id || ev.timestamp" class="timeline-row" style="margin:0;padding:6px 0;">
+<span class="timeline-dot" :style="{ background: timelineColor(ev) }"></span>
+<div class="timeline-event-main">
+<span class="mono timeline-time">{{ timelineLabel(ev.timestamp) }}</span>
+<span class="timeline-tool">{{ ev.tool_name || ev.action || 'unknown tool' }}</span>
+<span class="badge timeline-outcome-badge" :style="timelineBadgeStyle(ev)">{{ ev.outcome || ev.verdict || 'UNKNOWN' }}</span>
+<span :class="stageBadgeClass(ev.stage)">{{ ev.stage || 'Unknown stage' }}</span>
+<span class="timeline-reason">{{ truncate(ev.reason, 160) }}</span>
+</div>
+</div>
+</div>
+</div>
+</div>
