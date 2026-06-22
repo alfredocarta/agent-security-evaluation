@@ -154,9 +154,10 @@ async def agt_compliance(limit: int = Query(default=1000, ge=1, le=1000)):
 @router.get("/{article_code}", response_model=list[AuditEvent])
 async def compliance_events(
     article_code: str,
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=500, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
+    window: Literal["1h", "24h", "7d"] = Query(default="7d"),
 ):
     if article_code not in ALL_ARTICLES:
         raise HTTPException(status_code=404, detail=f"Unknown article: {article_code}")
-    return await get_compliance_events(article_code, limit=limit, offset=offset)
+    return await get_compliance_events(article_code, limit=limit, offset=offset, window=window)

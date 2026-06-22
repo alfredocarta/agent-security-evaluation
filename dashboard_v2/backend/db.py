@@ -5,7 +5,7 @@ import re
 import sqlite3
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -36,10 +36,16 @@ FALLBACK_DB_PATH = ASF_ROOT / "asf_local.db"
 TEST_DB_PATH = Path(os.environ.get("ASF_TEST_DB", str(ASF_ROOT / "asf_test.db")))
 
 _ACTIVE_ENV: str = "production"
+_DEFAULT_ENV: str = _ACTIVE_ENV
 _VALID_ENVS: frozenset[str] = frozenset({"production", "test"})
-CACHE_PATH = Path(__file__).resolve().parents[1] / "dashboard_cache.json"
 _RUNTIME_CACHE: dict[tuple[Any, ...], tuple[float, Any]] = {}
 _INDEXED_DB_PATHS: set[str] = set()
+
+
+def _cache_path() -> Path:
+    base = Path(__file__).resolve().parents[1]
+    suffix = "" if _ACTIVE_ENV == _DEFAULT_ENV else f"_{_ACTIVE_ENV}"
+    return base / f"dashboard_cache{suffix}.json"
 
 
 def _cache_get(key: tuple[Any, ...]) -> Any | None:
@@ -66,7 +72,7 @@ def invalidate_cache() -> None:
     """
     _RUNTIME_CACHE.clear()
     try:
-        CACHE_PATH.unlink(missing_ok=True)
+        _cache_path().unlink(missing_ok=True)
     except OSError:
         # Best effort: the short-lived runtime cache is still cleared, and the
         # next get_metrics call can detect and ignore stale on-disk cache data.
@@ -101,7 +107,7 @@ def _ensure_query_indexes(conn: sqlite3.Connection, db_path: Path) -> None:
 
 def _load_dashboard_cache() -> dict[str, Any]:
     try:
-        return json.loads(CACHE_PATH.read_text())
+        return json.loads(_cache_path().read_text())
     except Exception:
         return {}
 
@@ -2420,10 +2426,21 @@ async def get_overview_charts(window: str = "24h", agent_id: str | None = None) 
     return _cache_set(cache_key, result, ttl=10.0)
 
 
-async def get_compliance_events(article_code: str, limit: int = 20, offset: int = 0) -> list[AuditEvent]:
-    limit = max(1, min(int(limit), 100))
+def _window_cutoff(window: str) -> str:
+    delta = {
+        "1h": timedelta(hours=1),
+        "24h": timedelta(hours=24),
+        "7d": timedelta(days=7),
+    }.get(window, timedelta(days=7))
+    return (datetime.now(UTC) - delta).strftime("%Y-%m-%d %H:%M:%S")
+
+
+async def get_compliance_events(article_code: str, limit: int = 500, offset: int = 0, window: str = "7d") -> list[AuditEvent]:
+    limit = max(1, min(int(limit), 1000))
     offset = max(0, int(offset))
-    cache_key = ("compliance_events", article_code, limit, offset)
+    window = window if window in {"1h", "24h", "7d"} else "7d"
+    cutoff = _window_cutoff(window)
+    cache_key = ("compliance_events", article_code, limit, offset, window)
     cached = _cache_get(cache_key)
     if cached is not None:
         return cached
@@ -2448,8 +2465,8 @@ async def get_compliance_events(article_code: str, limit: int = 20, offset: int 
                 rows.extend(dict(row) for row in conn.execute(
                     "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
                     "FROM audit_trail INDEXED BY idx_audit_trail_agent_timestamp "
-                    "WHERE agent_id = ? ORDER BY timestamp DESC LIMIT ?",
-                    (agent, per_agent_limit),
+                    "WHERE agent_id = ? AND timestamp >= ? ORDER BY timestamp DESC LIMIT ?",
+                    (agent, cutoff, per_agent_limit),
                 ).fetchall())
             rows.sort(key=lambda r: str(r.get("timestamp") or ""), reverse=True)
             rows = rows[offset:offset + limit]
@@ -2457,18 +2474,19 @@ async def get_compliance_events(article_code: str, limit: int = 20, offset: int 
             if outcomes is _ALL_OUTCOMES:
                 query = (
                     "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
-                    "FROM audit_trail INDEXED BY idx_audit_trail_timestamp_desc"
+                    "FROM audit_trail INDEXED BY idx_audit_trail_timestamp_desc "
+                    "WHERE timestamp >= ?"
                 )
-                params: list[Any] = []
+                params: list[Any] = [cutoff]
             else:
                 # Let SQLite use idx_audit_trail_outcome_timestamp for selective article
                 # drill-downs instead of forcing a timestamp-only scan over the full table.
                 placeholders = ",".join("?" for _ in outcomes)
                 query = (
                     "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
-                    f"FROM audit_trail WHERE outcome IN ({placeholders})"
+                    f"FROM audit_trail WHERE outcome IN ({placeholders}) AND timestamp >= ?"
                 )
-                params = list(sorted(outcomes))
+                params = list(sorted(outcomes)) + [cutoff]
 
             query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
             params.extend([limit, offset])

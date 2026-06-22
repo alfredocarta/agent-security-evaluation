@@ -45,23 +45,66 @@ This view maps recorded ASF audit events to EU AI Act articles as supporting evi
 <span style="color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:10px;">Scope &amp; limitations</span><br>{{ item.note }}
 </div>
 <div v-if="loadingArticle" style="font-size:13px;color:var(--text-muted);">Loading events…</div>
-<div v-else-if="articleEvents.length === 0" style="font-size:13px;color:var(--text-muted);">No events found.</div>
-<div v-for="ev in articleEvents" :key="ev.event_id" class="ev-row" :class="evRowClass(ev)" style="margin-bottom:4px;">
-<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
-<span class="mono" style="font-size:12px;color:var(--text-muted);">{{ timeOnly(ev.timestamp) }}</span>
-<span style="font-weight:500;font-size:13px;">{{ ev.tool_name || ev.action }}</span>
-<span :class="verdictBadgeClass(ev)">{{ ev.verdict || ev.outcome }}</span>
-<span :class="stageBadgeClass(ev.stage)">{{ ev.stage }}</span>
-<span v-if="ev.latency_ms != null" class="mono" style="font-size:12px;color:var(--text-muted);">{{ formatDuration(ev.latency_ms) }}</span>
+<div v-else class="timeline-panel">
+<div class="timeline-toolbar">
+<div class="timeline-segmented" aria-label="Timeline window">
+<button type="button" :class="{ active: timelineWindow === '1h' }" @click="changeTimelineWindow('1h')">1 h</button>
+<button type="button" :class="{ active: timelineWindow === '24h' }" @click="changeTimelineWindow('24h')">24 h</button>
+<button type="button" :class="{ active: timelineWindow === '7d' }" @click="changeTimelineWindow('7d')">7 d</button>
 </div>
-<div style="color:var(--text-muted);margin-top:3px;font-size:12px;">{{ truncate(ev.reason, 120) }}</div>
+<select class="timeline-select" v-model="timelineAgentFilter">
+<option value="">All agents</option>
+<option v-for="agent in timelineAgentOptions" :key="agent" :value="agent">{{ agent }}</option>
+</select>
+<select class="timeline-select" v-model="timelineOutcomeFilter">
+<option value="">All outcomes</option>
+<option value="DENY">DENY</option>
+<option value="ALLOWED">ALLOWED</option>
+<option value="HITL_REQUESTED">HITL_REQUESTED</option>
+<option value="KILL_SWITCH">KILL_SWITCH</option>
+<option value="BLOCKED">BLOCKED</option>
+</select>
 </div>
-<div v-if="!loadingArticle && articleEvents.length > 0"
-style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;font-size:12px;color:var(--text-muted);">
-<span>Showing {{ articleEvents.length.toLocaleString() }} events · cached in browser</span>
-<button v-if="articleHasMore[expandedArticle]" class="hitl-btn" :disabled="articleLoadingMore" @click="loadMoreArticleEvents">
-{{ articleLoadingMore ? 'Loading…' : 'Load next 20' }}
-</button>
+<div v-if="timelineAllEvents.length === 0" style="font-size:13px;color:var(--text-muted);">No events found in the selected window — try a wider range.</div>
+<div v-else-if="timelineEvents.length === 0" style="font-size:13px;color:var(--text-muted);">No events match the selected filters.</div>
+<div v-else class="timeline-axis">
+<div v-for="item in timelineEvents" :key="item.key" class="timeline-row">
+<template v-if="item.type === 'cluster'">
+<button type="button" class="timeline-dot timeline-dot-cluster" :style="timelineClusterStyle(item)" @click="toggleCluster(item.key)">×{{ item.count }}</button>
+<div class="timeline-event-main" @click="toggleCluster(item.key)">
+<span class="mono timeline-time">{{ timeOnly(item.timestamp) }}</span>
+<span class="timeline-cluster-summary">{{ item.count }} events clustered</span>
+<span class="badge badge-neutral">click to expand</span>
+</div>
+</template>
+<template v-else-if="item.type === 'cluster-expanded'">
+<button type="button" class="timeline-dot timeline-dot-cluster" :style="timelineClusterStyle(item)" @click="toggleCluster(item.key)">−{{ item.count }}</button>
+<div class="timeline-event-main" @click="toggleCluster(item.key)">
+<span class="mono timeline-time">{{ timeOnly(item.timestamp) }}</span>
+<span class="timeline-cluster-summary">{{ item.count }} events expanded</span>
+<span class="badge badge-neutral">click to collapse</span>
+</div>
+</template>
+<template v-else>
+<span class="timeline-dot" :style="{ background: timelineColor(item.event) }"></span>
+<div class="timeline-event-main">
+<span class="mono timeline-time">{{ timeOnly(item.event.timestamp) }}</span>
+<span class="timeline-tool">{{ item.event.tool_name || item.event.action || 'unknown tool' }}</span>
+<span class="badge timeline-outcome-badge" :style="timelineBadgeStyle(item.event)">{{ item.event.outcome || item.event.verdict || 'UNKNOWN' }}</span>
+<span :class="stageBadgeClass(item.event.stage)">{{ item.event.stage || 'Unknown stage' }}</span>
+<span class="timeline-reason">{{ truncate(item.event.reason, 120) }}</span>
+<div class="timeline-tooltip">
+<div><b>agent_id</b><span>{{ timelineTooltip(item.event).agent_id }}</span></div>
+<div><b>agent_model</b><span>{{ timelineTooltip(item.event).agent_model }}</span></div>
+<div><b>security_model</b><span>{{ timelineTooltip(item.event).security_model }}</span></div>
+<div><b>confidence</b><span>{{ timelineTooltip(item.event).confidence }}</span></div>
+<div><b>reason</b><span>{{ timelineTooltip(item.event).reason }}</span></div>
+<div><b>latency_ms</b><span>{{ timelineTooltip(item.event).latency_ms }}</span></div>
+</div>
+</div>
+</template>
+</div>
+</div>
 </div>
 </div>
 </td>

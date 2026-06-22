@@ -1,6 +1,6 @@
 import asyncio
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from backend import db
 
@@ -30,7 +30,7 @@ def _create_test_db(path):
         "side_effect_occurred INTEGER, expected_label TEXT, human_label TEXT, scenario_id TEXT, "
         "threat_id TEXT, trace_id TEXT, audit_hash TEXT, created_at TEXT NOT NULL)"
     )
-    base = datetime(2026, 6, 3, 12, 0, 0)
+    base = datetime.now(UTC).replace(tzinfo=None, microsecond=0)
     for i in range(60):
         ts = (base - timedelta(minutes=i * 6)).strftime("%Y-%m-%d %H:%M:%S")
         conn.execute(
@@ -43,7 +43,7 @@ def _create_test_db(path):
             (f"h{i:03d}", ts, f"sess-{i:03d}", f"trace-{i:03d}", f"hash{i:03d}", ts),
         )
 
-    detail_base = datetime(2026, 6, 2, 10, 0, 0)
+    detail_base = base - timedelta(days=1)
     for i in range(45):
         ts = (detail_base + timedelta(seconds=i)).strftime("%Y-%m-%d %H:%M:%S")
         conn.execute(
@@ -109,8 +109,8 @@ def test_compliance_drilldown_supports_limit_offset_and_offset_cache(tmp_path, m
     assert len(page1) == 20
     assert len(page2) == 20
     assert page1[0].event_id != page2[0].event_id
-    assert ("compliance_events", "Art. 12", 20, 0) in db._RUNTIME_CACHE
-    assert ("compliance_events", "Art. 12", 20, 20) in db._RUNTIME_CACHE
+    assert ("compliance_events", "Art. 12", 20, 0, "7d") in db._RUNTIME_CACHE
+    assert ("compliance_events", "Art. 12", 20, 20, "7d") in db._RUNTIME_CACHE
 
 
 def test_session_detail_supports_limit_offset_and_cache(tmp_path, monkeypatch):
