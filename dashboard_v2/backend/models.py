@@ -23,6 +23,8 @@ class AuditEvent(BaseModel):
     agent_model: str | None = None
     security_model: str | None = None
     prev_hash: str | None = None
+    hostname: str | None = None
+    username: str | None = None
 
 
 class PipelineStage(BaseModel):

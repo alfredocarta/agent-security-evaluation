@@ -591,6 +591,8 @@ def _normalize_event(row: dict[str, Any]) -> AuditEvent:
         agent_model=model,
         security_model=_infer_security_model(outcome, reason),
         prev_hash=row.get("prev_hash"),
+        hostname=row.get("hostname"),
+        username=row.get("username"),
     )
 
 
@@ -918,6 +920,10 @@ def _audit_trail_select_columns(conn: sqlite3.Connection) -> str:
         columns.insert(6, "human_reason")
     if "trace_id" in existing:
         columns.append("trace_id")
+    if "hostname" in existing:
+        columns.append("hostname")
+    if "username" in existing:
+        columns.append("username")
     return ", ".join(columns)
 
 
