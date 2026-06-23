@@ -34,6 +34,7 @@ ASF_ROOT = Path(os.environ.get("ASF_ROOT", "/Users/alfredo/Projects/agent-securi
 REQUESTED_DB_PATH = Path(os.environ.get("ASF_AUDIT_DB", str(ASF_ROOT / "audit.db")))
 FALLBACK_DB_PATH = ASF_ROOT / "asf_local.db"
 TEST_DB_PATH = Path(os.environ.get("ASF_TEST_DB", str(ASF_ROOT / "asf_test.db")))
+READ_ONLY_AUDIT_DB = os.environ.get("ASF_DASHBOARD_READONLY", "").lower() in {"1", "true", "yes"}
 
 _ACTIVE_ENV: str = "production"
 _DEFAULT_ENV: str = _ACTIVE_ENV
@@ -82,6 +83,8 @@ def invalidate_cache() -> None:
 def _ensure_query_indexes(conn: sqlite3.Connection, db_path: Path) -> None:
     # These make drill-down pagination use indexed lookups instead of sorting/scanning
     # the multi-million-row audit table. CREATE INDEX IF NOT EXISTS is cheap once built.
+    if READ_ONLY_AUDIT_DB:
+        return
     key = str(db_path)
     if key in _INDEXED_DB_PATHS:
         return
@@ -241,6 +244,21 @@ def _has_claude_trace_schema(path: Path) -> bool:
         return False
 
 
+def _has_table(path: Path, name: str) -> bool:
+    if not path.exists():
+        return False
+
+    try:
+        with sqlite3.connect(path) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (name,),
+            ).fetchone()
+            return row is not None
+    except sqlite3.Error:
+        return False
+
+
 def get_db_path() -> Path:
     if _ACTIVE_ENV == "test":
         return TEST_DB_PATH
@@ -270,7 +288,7 @@ def get_env_info() -> dict[str, Any]:
 
 async def init_db() -> None:
     db_path = get_db_path()
-    if not _has_audit_schema(db_path):
+    if READ_ONLY_AUDIT_DB or not _has_audit_schema(db_path):
         return
     async with aiosqlite.connect(db_path) as conn:
         await conn.execute(
@@ -2465,12 +2483,13 @@ async def get_compliance_events(article_code: str, limit: int = 500, offset: int
         if outcomes is _BENCHMARK_EVENTS:
             # Agent-specific index avoids scanning the whole audit table when benchmark
             # agents are absent from the live ASF DB. Fetch enough per agent, merge, page.
+            audit_table = "audit_trail" if READ_ONLY_AUDIT_DB else "audit_trail INDEXED BY idx_audit_trail_agent_timestamp"
             per_agent_limit = limit + offset
             rows = []
             for agent in sorted(EVAL_TOOL_AGENTS):
                 rows.extend(dict(row) for row in conn.execute(
                     "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
-                    "FROM audit_trail INDEXED BY idx_audit_trail_agent_timestamp "
+                    f"FROM {audit_table} "
                     "WHERE agent_id = ? AND timestamp >= ? ORDER BY timestamp DESC LIMIT ?",
                     (agent, cutoff, per_agent_limit),
                 ).fetchall())
@@ -2478,9 +2497,10 @@ async def get_compliance_events(article_code: str, limit: int = 500, offset: int
             rows = rows[offset:offset + limit]
         else:
             if outcomes is _ALL_OUTCOMES:
+                audit_table = "audit_trail" if READ_ONLY_AUDIT_DB else "audit_trail INDEXED BY idx_audit_trail_timestamp_desc"
                 query = (
                     "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
-                    "FROM audit_trail INDEXED BY idx_audit_trail_timestamp_desc "
+                    f"FROM {audit_table} "
                     "WHERE timestamp >= ?"
                 )
                 params: list[Any] = [cutoff]
@@ -2505,6 +2525,8 @@ async def get_compliance_events(article_code: str, limit: int = 500, offset: int
 
 
 def _ensure_hitl_decision_table(conn: sqlite3.Connection) -> None:
+    if READ_ONLY_AUDIT_DB:
+        return
     conn.execute(
         "CREATE TABLE IF NOT EXISTS dashboard_hitl_decisions ("
         "event_id TEXT PRIMARY KEY, "
@@ -2533,6 +2555,12 @@ def _pending_hitl_filter(alias: str = "a") -> str:
     )
 
 
+def _hitl_decision_join(db_path: Path) -> str:
+    if READ_ONLY_AUDIT_DB and not _has_table(db_path, "dashboard_hitl_decisions"):
+        return "LEFT JOIN (SELECT NULL AS event_id WHERE 0) d ON d.event_id = a.hash "
+    return "LEFT JOIN dashboard_hitl_decisions d ON d.event_id = a.hash "
+
+
 def _count_pending_hitl(db_path: Path, agent_id: str | None = None) -> int:
     if not _has_audit_schema(db_path):
         return 0
@@ -2542,7 +2570,7 @@ def _count_pending_hitl(db_path: Path, agent_id: str | None = None) -> int:
         _ensure_hitl_decision_table(conn)
         return int(conn.execute(
             "SELECT COUNT(*) FROM audit_trail a "
-            "LEFT JOIN dashboard_hitl_decisions d ON d.event_id = a.hash "
+            f"{_hitl_decision_join(db_path)}"
             f"WHERE {_pending_hitl_filter('a')}{agent_clause}",
             params,
         ).fetchone()[0] or 0)
@@ -2580,13 +2608,14 @@ async def get_hitl_events() -> list[AuditEvent]:
         conn.row_factory = sqlite3.Row
         _ensure_hitl_decision_table(conn)
         pending_filter = _pending_hitl_filter("a")
+        decision_join = _hitl_decision_join(db_path)
         if _has_hermes_trace_schema(db_path):
             query = (
                 "SELECT a.hash, a.timestamp, a.agent_id, a.action, a.outcome, a.reason, a.prev_hash, "
                 "h.agent_model AS agent_model "
                 "FROM audit_trail a "
                 "LEFT JOIN hermes_tool_traces h ON h.audit_hash = a.hash "
-                "LEFT JOIN dashboard_hitl_decisions d ON d.event_id = a.hash "
+                f"{decision_join}"
                 f"WHERE {pending_filter} "
                 "ORDER BY a.timestamp DESC"
             )
@@ -2595,7 +2624,7 @@ async def get_hitl_events() -> list[AuditEvent]:
                 "SELECT a.hash, a.timestamp, a.agent_id, a.action, a.outcome, a.reason, a.prev_hash, "
                 "NULL AS agent_model "
                 "FROM audit_trail a "
-                "LEFT JOIN dashboard_hitl_decisions d ON d.event_id = a.hash "
+                f"{decision_join}"
                 f"WHERE {pending_filter} "
                 "ORDER BY a.timestamp DESC"
             )
@@ -2621,6 +2650,8 @@ async def decide_hitl_event(
     db_path = get_db_path()
     if not _has_audit_schema(db_path):
         raise LookupError("audit database is unavailable")
+    if READ_ONLY_AUDIT_DB:
+        raise ValueError("HITL decisions are disabled for read-only audit databases")
 
     with sqlite3.connect(db_path, timeout=5) as conn:
         conn.row_factory = sqlite3.Row
