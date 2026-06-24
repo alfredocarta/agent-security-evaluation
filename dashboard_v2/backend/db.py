@@ -12,6 +12,7 @@ from typing import Any
 import aiosqlite
 
 from .version import get_asf_version_info
+from .asf_paths import resolve_audit_db_path
 from .models import (
     AuditEvent,
     EventExplanation,
@@ -30,11 +31,13 @@ from .models import (
 )
 
 
-ASF_ROOT = Path(os.environ.get("ASF_ROOT", "/Users/alfredo/Projects/agent-security-framework"))
-REQUESTED_DB_PATH = Path(os.environ.get("ASF_AUDIT_DB", str(ASF_ROOT / "audit.db")))
-FALLBACK_DB_PATH = ASF_ROOT / "asf_local.db"
-TEST_DB_PATH = Path(os.environ.get("ASF_TEST_DB", str(ASF_ROOT / "asf_test.db")))
+REQUESTED_DB_PATH: Path | None = None
+TEST_DB_PATH = Path(os.environ.get("ASF_TEST_DB", "/tmp/asf_test.db")).expanduser()
 READ_ONLY_AUDIT_DB = os.environ.get("ASF_DASHBOARD_READONLY", "").lower() in {"1", "true", "yes"}
+DB_PATH_ERROR = (
+    "ERROR: ASF audit database not found or missing audit_trail schema at {path}. "
+    "Set ASF_AUDIT_DB to the database file or ASF_ROOT to the ASF checkout."
+)
 
 _ACTIVE_ENV: str = "production"
 _DEFAULT_ENV: str = _ACTIVE_ENV
@@ -262,9 +265,14 @@ def _has_table(path: Path, name: str) -> bool:
 def get_db_path() -> Path:
     if _ACTIVE_ENV == "test":
         return TEST_DB_PATH
+    if REQUESTED_DB_PATH is None:
+        db_path = resolve_audit_db_path()
+        if not _has_audit_schema(db_path):
+            raise RuntimeError(DB_PATH_ERROR.format(path=db_path))
+        return db_path
     if _has_audit_schema(REQUESTED_DB_PATH):
         return REQUESTED_DB_PATH
-    return FALLBACK_DB_PATH
+    raise RuntimeError(DB_PATH_ERROR.format(path=REQUESTED_DB_PATH))
 
 
 def set_active_env(name: str) -> bool:

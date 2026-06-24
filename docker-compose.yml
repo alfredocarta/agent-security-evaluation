@@ -4,11 +4,11 @@ services:
       context: .
       dockerfile: dashboard_v2/Dockerfile
     ports:
-      - "8080:8080"
+      - "${ASE_HOST_PORT:-8080}:8080"
     environment:
-      ASF_DASHBOARD_PORT: "8080"
-      ASF_AUDIT_DB: /data/audit.db
+      ASE_DASHBOARD_PORT: "8080"
+      ASF_AUDIT_DB: /data/asf_local.db
       ASF_DASHBOARD_READONLY: "1"
     volumes:
-      - ${ASF_AUDIT_DB_HOST}:/data/audit.db:ro
+      - ${ASF_AUDIT_DB_HOST}:/data/asf_local.db:ro
     restart: unless-stopped
