@@ -18,6 +18,7 @@ else
 fi
 
 PYTHON_VERSION=$("$PYTHON" -c 'import sys; sys.stdout.write("{}.{}".format(sys.version_info[0], sys.version_info[1]))')
+PYTHON=$("$PYTHON" -c 'import sys; sys.stdout.write(sys.executable)')
 PYTHON_MAJOR=${PYTHON_VERSION%%.*}
 PYTHON_MINOR=${PYTHON_VERSION#*.}
 
