@@ -8,6 +8,12 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 
 if [ -n "$CONDA_PREFIX" ] && [ -x "$CONDA_PREFIX/bin/python3" ]; then
   PYTHON="$CONDA_PREFIX/bin/python3"
+elif command -v python3.13 >/dev/null 2>&1; then
+  PYTHON="python3.13"
+elif command -v python3.12 >/dev/null 2>&1; then
+  PYTHON="python3.12"
+elif command -v python3.11 >/dev/null 2>&1; then
+  PYTHON="python3.11"
 elif command -v python3 >/dev/null 2>&1; then
   PYTHON="python3"
 elif command -v python >/dev/null 2>&1; then
