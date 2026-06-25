@@ -1,7 +1,10 @@
 """Quick sanity check: single benign and single injection sample with all flags off."""
 import sys, os
 
-sys.path.insert(0, "/Users/alfredo/Projects/agent-security-framework")
+ASF_ROOT = os.environ.get("ASF_ROOT")
+if not ASF_ROOT:
+    raise RuntimeError("ERROR: ASF_ROOT must be set to import ASF modules. Example:\nASF_ROOT=/path/to/agent-security-framework python -m suite --target asf")
+sys.path.insert(0, ASF_ROOT)
 os.environ["HF_HUB_OFFLINE"] = "1"
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
 os.environ["ASF_DISABLE_STAGE25"] = "false"

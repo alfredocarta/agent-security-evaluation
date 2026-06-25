@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import sqlite3
 import subprocess
@@ -19,10 +20,12 @@ from typing import Any
 
 import pandas as pd
 
+from asf_paths import require_asf_root, resolve_audit_db_path
+
 # ── paths ──────────────────────────────────────────────────────────────────────
-EVAL_ROOT = Path("/Users/alfredo/Projects/agent-security-evaluation")
-ASF_ROOT  = Path("/Users/alfredo/Projects/agent-security-framework")
-DB_PATH   = ASF_ROOT / "asf_local.db"
+EVAL_ROOT = Path(__file__).resolve().parents[1]
+ASF_ROOT  = require_asf_root()
+DB_PATH   = resolve_audit_db_path()
 STAGE3_MD = ASF_ROOT / "STAGE3_MODEL_COMPARISON.md"
 
 # ── global error log (populated during load, displayed in Diagnostics) ─────────
@@ -108,8 +111,7 @@ def _infer_verdict(outcome: str) -> str:
 def load_audit_events() -> pd.DataFrame:
     """Load all rows from audit_trail and normalize them."""
     if not DB_PATH.exists():
-        ERRORS.append({"source": "SQLite", "msg": f"Database not found at {DB_PATH}"})
-        return pd.DataFrame()
+        raise RuntimeError(f"ERROR: ASF audit database not found at {DB_PATH}")
 
     try:
         con = sqlite3.connect(str(DB_PATH))
@@ -120,8 +122,7 @@ def load_audit_events() -> pd.DataFrame:
         )
         con.close()
     except Exception as exc:
-        ERRORS.append({"source": "SQLite", "msg": str(exc)})
-        return pd.DataFrame()
+        raise RuntimeError(f"ERROR: Unable to load ASF audit database at {DB_PATH}: {exc}") from exc
 
     if df.empty:
         return df

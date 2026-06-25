@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
+from pathlib import Path
 
 from contracts import EvalResult, Outcome
 
-sys.path.insert(0, "/Users/alfredo/Projects/agent-security-framework")
+ASF_ROOT = os.environ.get("ASF_ROOT")
+if not ASF_ROOT:
+    raise RuntimeError("ERROR: ASF_ROOT must be set to import ASF modules. Example:\nASF_ROOT=/path/to/agent-security-framework python -m suite --target asf")
+sys.path.insert(0, ASF_ROOT)
 
 import registry  # noqa: E402
 from interceptor import hardened_interceptor  # noqa: E402

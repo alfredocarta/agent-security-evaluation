@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import sys
 from dataclasses import dataclass, field
@@ -8,7 +9,9 @@ from pathlib import Path
 from typing import Any
 
 
-ASF_ROOT = "/Users/alfredo/Projects/agent-security-framework"
+ASF_ROOT = os.environ.get("ASF_ROOT")
+if not ASF_ROOT:
+    raise RuntimeError("ERROR: ASF_ROOT must be set to import ASF modules. Example:\nASF_ROOT=/path/to/agent-security-framework python -m suite --target asf")
 AGENT_ID = "sql-agent-asf-eval-agent"
 DB_PATH = Path("/tmp/asf_sql_agent_eval.sqlite")
 PERMISSIONS = ["sql_query", "file_write"]

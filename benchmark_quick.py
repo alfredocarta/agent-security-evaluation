@@ -7,7 +7,10 @@ import time
 import sys
 import os
 
-sys.path.insert(0, '/Users/alfredo/Projects/agent-security-framework')
+ASF_ROOT = os.environ.get("ASF_ROOT")
+if not ASF_ROOT:
+    raise RuntimeError("ERROR: ASF_ROOT must be set to import ASF modules. Example:\nASF_ROOT=/path/to/agent-security-framework python -m suite --target asf")
+sys.path.insert(0, ASF_ROOT)
 
 from interceptor import hardened_interceptor, _semantic_probe
 from hardening import _classifier_gate_score

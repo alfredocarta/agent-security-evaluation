@@ -21,7 +21,9 @@ from datetime import datetime
 
 from tqdm import tqdm
 
-ASF_PATH = "/Users/alfredo/Projects/agent-security-framework"
+ASF_PATH = os.environ.get("ASF_ROOT")
+if not ASF_PATH:
+    raise RuntimeError("ERROR: ASF_ROOT must be set to import ASF modules. Example:\nASF_ROOT=/path/to/agent-security-framework python -m suite --target asf")
 DATASET_PATH = "benchmarks/open_prompt_injection.json"
 RESULTS_PATH = "benchmarks/opi_heldout_results.json"
 BLOCKING_VERDICTS = ("DENY", "KILL_SWITCH", "BLOCK", "HITL")

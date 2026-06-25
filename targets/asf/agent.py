@@ -4,7 +4,13 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../agent-security-framework")))
+ASF_ROOT = os.environ.get("ASF_ROOT")
+if not ASF_ROOT:
+    raise RuntimeError(
+        "ERROR: ASF_ROOT must be set to import ASF modules. Example:\n"
+        "ASF_ROOT=/path/to/agent-security-framework python -m suite --target asf"
+    )
+sys.path.insert(0, ASF_ROOT)
 
 import registry
 from interceptor import hardened_interceptor as security_interceptor

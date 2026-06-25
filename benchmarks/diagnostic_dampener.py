@@ -25,7 +25,9 @@ import json, os, sys, time, importlib
 from datetime import datetime
 from tqdm import tqdm
 
-ASF_PATH = "/Users/alfredo/Projects/agent-security-framework"
+ASF_PATH = os.environ.get("ASF_ROOT")
+if not ASF_PATH:
+    raise RuntimeError("ERROR: ASF_ROOT must be set to import ASF modules. Example:\nASF_ROOT=/path/to/agent-security-framework python -m suite --target asf")
 sys.path.insert(0, ASF_PATH)
 sys.stdout.reconfigure(line_buffering=True)
 os.environ.setdefault("HF_HUB_OFFLINE", "1")

@@ -12,7 +12,10 @@ from pathlib import Path
 from tqdm import tqdm
 
 
-ASF_PATH = Path("/Users/alfredo/Projects/agent-security-framework")
+ASF_ROOT_VALUE = os.environ.get("ASF_ROOT")
+if not ASF_ROOT_VALUE:
+    raise RuntimeError("ERROR: ASF_ROOT must be set to import ASF modules. Example:\nASF_ROOT=/path/to/agent-security-framework python -m suite --target asf")
+ASF_PATH = Path(ASF_ROOT_VALUE).expanduser()
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DATASET_PATH = REPO_ROOT / "benchmarks" / "open_prompt_injection.json"
 OUTPUT_PATH = REPO_ROOT / "benchmarks" / "fps_analysis.json"

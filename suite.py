@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -154,7 +155,13 @@ def to_dict(suite: SuiteResult) -> dict:
 
 import atexit
 import sys as _sys
-_sys.path.insert(0, "/Users/alfredo/Projects/agent-security-framework")
+_asf_root = os.environ.get("ASF_ROOT")
+if not _asf_root:
+    raise RuntimeError(
+        "ERROR: ASF_ROOT must be set to import ASF modules. Example:\n"
+        "ASF_ROOT=/path/to/agent-security-framework python -m suite --target asf"
+    )
+_sys.path.insert(0, _asf_root)
 try:
     from audit import flush_langfuse
     atexit.register(flush_langfuse)

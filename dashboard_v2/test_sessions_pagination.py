@@ -2,12 +2,13 @@ import asyncio
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from backend import db
 
 
 def _point_dashboard_to(db_path, monkeypatch):
     monkeypatch.setattr(db, "REQUESTED_DB_PATH", db_path)
-    monkeypatch.setattr(db, "FALLBACK_DB_PATH", db_path)
     db._RUNTIME_CACHE.clear()
     db._INDEXED_DB_PATHS.clear()
 
@@ -67,6 +68,39 @@ def _create_test_db(path):
         )
     conn.commit()
     conn.close()
+
+
+def test_get_db_path_requires_asf_root_or_audit_db(monkeypatch):
+    monkeypatch.delenv("ASF_ROOT", raising=False)
+    monkeypatch.delenv("ASF_AUDIT_DB", raising=False)
+    monkeypatch.setattr(db, "REQUESTED_DB_PATH", None)
+    db.set_active_env("production")
+
+    with pytest.raises(RuntimeError, match="ASF_ROOT or ASF_AUDIT_DB must be set"):
+        db.get_db_path()
+
+
+def test_get_db_path_rejects_missing_audit_db(tmp_path, monkeypatch):
+    monkeypatch.delenv("ASF_ROOT", raising=False)
+    monkeypatch.setenv("ASF_AUDIT_DB", str(tmp_path / "missing.db"))
+    monkeypatch.setattr(db, "REQUESTED_DB_PATH", None)
+    db.set_active_env("production")
+
+    with pytest.raises(RuntimeError, match="audit database not found"):
+        db.get_db_path()
+
+
+def test_get_db_path_derives_asf_local_from_asf_root(tmp_path, monkeypatch):
+    asf_root = tmp_path / "asf"
+    asf_root.mkdir()
+    db_path = asf_root / "asf_local.db"
+    _create_test_db(db_path)
+    monkeypatch.setenv("ASF_ROOT", str(asf_root))
+    monkeypatch.delenv("ASF_AUDIT_DB", raising=False)
+    monkeypatch.setattr(db, "REQUESTED_DB_PATH", None)
+    db.set_active_env("production")
+
+    assert db.get_db_path() == db_path
 
 
 def test_get_sessions_returns_distinct_server_side_pages(tmp_path, monkeypatch):

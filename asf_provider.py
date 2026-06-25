@@ -1,12 +1,9 @@
 """Promptfoo custom provider for the Agent Security Framework."""
 
-import sys
-from pathlib import Path
+from asf_paths import add_asf_to_sys_path
 
 
-ASF_ROOT = Path("/Users/alfredo/Projects/agent-security-framework")
-if str(ASF_ROOT) not in sys.path:
-    sys.path.insert(0, str(ASF_ROOT))
+add_asf_to_sys_path()
 
 from interceptor import hardened_interceptor  # noqa: E402
 import registry  # noqa: E402

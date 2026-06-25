@@ -12,7 +12,10 @@ import sys
 from pathlib import Path
 
 
-ASF_ROOT = Path("/Users/alfredo/Projects/agent-security-framework")
+ASF_ROOT_VALUE = os.environ.get("ASF_ROOT")
+if not ASF_ROOT_VALUE:
+    raise RuntimeError("ERROR: ASF_ROOT must be set to import ASF modules. Example:\nASF_ROOT=/path/to/agent-security-framework python -m suite --target asf")
+ASF_ROOT = Path(ASF_ROOT_VALUE).expanduser()
 AGT_SRC_PATH = Path("/tmp/agt/agent-governance-python/agent-mesh/src")
 REQUIRED_ARTICLES = {"Art. 9", "Art. 12", "Art. 13", "Art. 14", "Art. 15"}
 

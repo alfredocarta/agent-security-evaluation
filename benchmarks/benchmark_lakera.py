@@ -6,7 +6,9 @@ import time
 from collections import defaultdict
 
 
-ASF_PATH = "/Users/alfredo/Projects/agent-security-framework"
+ASF_PATH = os.environ.get("ASF_ROOT")
+if not ASF_PATH:
+    raise RuntimeError("ERROR: ASF_ROOT must be set to import ASF modules. Example:\nASF_ROOT=/path/to/agent-security-framework python -m suite --target asf")
 DATASET_PATH = "benchmarks/lakera_pint.json"
 RESULTS_PATH = "benchmarks/lakera_results.json"
 BLOCKING_VERDICTS = ("DENY", "KILL_SWITCH", "BLOCK", "HITL")

@@ -9,7 +9,10 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 
-ASF_PATH = Path("/Users/alfredo/Projects/agent-security-framework")
+ASF_ROOT_VALUE = os.environ.get("ASF_ROOT")
+if not ASF_ROOT_VALUE:
+    raise RuntimeError("ERROR: ASF_ROOT must be set to import ASF modules. Example:\nASF_ROOT=/path/to/agent-security-framework python -m suite --target asf")
+ASF_PATH = Path(ASF_ROOT_VALUE).expanduser()
 DATASET_PATH = Path(__file__).resolve().with_name("open_prompt_injection.json")
 TOP_SAMPLE_LIMIT = 20
 NON_HEURISTIC_FEATURES = frozenset({"doc_context"})

@@ -29,8 +29,8 @@ The dashboard opens at **http://localhost:8501** by default.
 
 | Source | Path / Command | Required? |
 |---|---|---|
-| ASF SQLite audit trail | `/Users/alfredo/Projects/agent-security-framework/asf_local.db` | Required (25 k+ rows) |
-| Stage 3 model comparison | `/Users/alfredo/Projects/agent-security-framework/STAGE3_MODEL_COMPARISON.md` | Optional (falls back to hardcoded table) |
+| ASF SQLite audit trail | `$ASF_ROOT/asf_local.db` | Required (25 k+ rows) |
+| Stage 3 model comparison | `$ASF_ROOT/STAGE3_MODEL_COMPARISON.md` | Optional (falls back to hardcoded table) |
 | Evaluation suite | `python -m suite --target asf` | Optional (on-demand in Diagnostics page) |
 | Integration scenarios | `python -m scenarios.integration.*` | Optional (on-demand) |
 | PyRIT / Garak / Promptfoo | `python -m scenarios.custom.*` | Optional (on-demand) |

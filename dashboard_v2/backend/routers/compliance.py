@@ -7,12 +7,12 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
+from ..asf_paths import require_asf_root
 from ..db import EVAL_TOOL_AGENTS, get_compliance_events, get_recent_events, get_total_trace_count, _load_dashboard_cache
 from ..models import AuditEvent, ComplianceItem
 
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
-ASF_ROOT = Path(os.environ.get("ASF_ROOT", "/Users/alfredo/Projects/agent-security-framework"))
 
 
 VALID_ARTICLES = Literal["Art. 9", "Art. 10", "Art. 12", "Art. 13", "Art. 14", "Art. 15", "Art. 17"]
@@ -134,8 +134,9 @@ async def compliance():
 async def agt_compliance(limit: int = Query(default=1000, ge=1, le=1000)):
     events = await get_recent_events(limit=limit)
     try:
-        if str(ASF_ROOT) not in sys.path:
-            sys.path.insert(0, str(ASF_ROOT))
+        asf_root = require_asf_root()
+        if str(asf_root) not in sys.path:
+            sys.path.insert(0, str(asf_root))
         from agt_compliance_bridge import AGTComplianceBridge
 
         bridge = AGTComplianceBridge()
@@ -144,7 +145,7 @@ async def agt_compliance(limit: int = Query(default=1000, ge=1, le=1000)):
             status_code=503,
             detail={
                 "error": "AGT compliance bridge unavailable",
-                "asf_root": str(ASF_ROOT),
+                "asf_root": os.environ.get("ASF_ROOT", ""),
                 "reason": f"{type(exc).__name__}: {exc}",
             },
         ) from exc

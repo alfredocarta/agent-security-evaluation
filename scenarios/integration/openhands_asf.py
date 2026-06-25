@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -10,7 +11,9 @@ from typing import Any, Callable, Literal, TypedDict
 from langgraph.graph import END, StateGraph
 
 
-ASF_ROOT = "/Users/alfredo/Projects/agent-security-framework"
+ASF_ROOT = os.environ.get("ASF_ROOT")
+if not ASF_ROOT:
+    raise RuntimeError("ERROR: ASF_ROOT must be set to import ASF modules. Example:\nASF_ROOT=/path/to/agent-security-framework python -m suite --target asf")
 AGENT_ID = "openhands-eval-agent"
 PERMISSIONS = ["shell", "file_read", "file_write", "search"]
 
