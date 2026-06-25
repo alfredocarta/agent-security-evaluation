@@ -12,7 +12,7 @@ from typing import Any
 import aiosqlite
 
 from .version import get_asf_version_info
-from .asf_paths import resolve_audit_db_path
+from .asf_paths import resolve_audit_db_path, resolve_test_db_path
 from .models import (
     AuditEvent,
     EventExplanation,
@@ -32,7 +32,6 @@ from .models import (
 
 
 REQUESTED_DB_PATH: Path | None = None
-TEST_DB_PATH = Path(os.environ.get("ASF_TEST_DB", "/tmp/asf_test.db")).expanduser()
 READ_ONLY_AUDIT_DB = os.environ.get("ASF_DASHBOARD_READONLY", "").lower() in {"1", "true", "yes"}
 DB_PATH_ERROR = (
     "ERROR: ASF audit database not found or missing audit_trail schema at {path}. "
@@ -264,7 +263,7 @@ def _has_table(path: Path, name: str) -> bool:
 
 def get_db_path() -> Path:
     if _ACTIVE_ENV == "test":
-        return TEST_DB_PATH
+        return resolve_test_db_path()
     if REQUESTED_DB_PATH is None:
         db_path = resolve_audit_db_path()
         if not _has_audit_schema(db_path):

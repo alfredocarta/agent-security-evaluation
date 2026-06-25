@@ -32,3 +32,15 @@ def resolve_audit_db_path() -> Path:
         return Path(root).expanduser() / "asf_local.db"
 
     raise RuntimeError(CONFIG_ERROR)
+
+
+def resolve_test_db_path() -> Path:
+    test_db = os.environ.get("ASF_TEST_DB")
+    if test_db:
+        return Path(test_db).expanduser()
+
+    root = os.environ.get("ASF_ROOT")
+    if root:
+        return Path(root).expanduser() / "asf_test.db"
+
+    return Path("/tmp/asf_test.db")
