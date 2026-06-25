@@ -8,7 +8,6 @@ services:
     environment:
       ASE_DASHBOARD_PORT: "8080"
       ASF_AUDIT_DB: /data/asf_local.db
-      ASF_DASHBOARD_READONLY: "1"
     volumes:
-      - ${ASF_AUDIT_DB_HOST}:/data/asf_local.db:ro
+      - ${ASF_AUDIT_DB_HOST}:/data/asf_local.db
     restart: unless-stopped

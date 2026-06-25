@@ -30,7 +30,7 @@ Dashboard available at http://localhost:8080.
 git clone https://github.com/alfredocarta/agent-security-evaluation.git
 cd agent-security-evaluation
 cp .env.example .env
-# Edit .env: set ASF_AUDIT_DB_HOST to the absolute path of the ASF audit.db
+# Edit .env: set ASF_AUDIT_DB_HOST to the absolute path of the ASF asf_local.db
 docker compose up
 ```
 
@@ -43,8 +43,9 @@ Dashboard available at http://localhost:8080. Reads the ASF audit database in re
 | Variable | Required | Description |
 | --- | --- | --- |
 | ASF_ROOT | One of the two | Directory of the ASF installation. ASE derives the audit DB path from $ASF_ROOT/asf_local.db. |
-| ASF_AUDIT_DB | One of the two | Direct path to the ASF audit.db file. Takes precedence over ASF_ROOT. |
-| ASF_AUDIT_DB_HOST | Docker only | Host-side absolute path to audit.db, mounted read-only into the container. |
+| ASF_AUDIT_DB | One of the two | Direct path to the ASF asf_local.db or asf_test.db file. Takes precedence over ASF_ROOT. |
+| ASF_AUDIT_DB_HOST | Docker only | Host-side absolute path to asf_local.db or asf_test.db, mounted read-only into the container. |
+| ASE_HOST_PORT | Docker only | Host-side port for the dashboard container. Default: 8080. Set this to override the default host port. |
 | ASE_DASHBOARD_PORT | No | HTTP port for the dashboard. Default: 8080. |
 | ASE_DASHBOARD_DIR | No | Override for the dashboard_v2 directory path. Default: embedded in install. |
 
@@ -119,7 +120,9 @@ python -m suite --target asf
 ## Relationship to ASF
 
 ASE is the evaluation and monitoring layer for ASF. It does not include the security controls — those live in the
-agent-security-framework (https://github.com/alfredocarta/agent-security-framework) repository. ASE reads the ASF audit database in
-read-only mode; it does not modify ASF state.
+agent-security-framework (https://github.com/alfredocarta/agent-security-framework) repository. ASE reads the ASF audit database for
+telemetry, timeline, and compliance views. For HITL events, ASE also writes back to the same database: approve/reject decisions append
+a new row to `audit_trail` with outcome `HITL_APPROVED` or `HITL_REJECTED`, which ASF polls to unblock the pipeline. All other access
+remains read-only.
 
 A developer deploying ASF does not need ASE. A security team monitoring multiple ASF deployments does not need to install ASF.
