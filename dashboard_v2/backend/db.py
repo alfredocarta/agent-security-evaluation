@@ -99,6 +99,8 @@ def _ensure_query_indexes(conn: sqlite3.Connection, db_path: Path) -> None:
     existing = {row["name"] for row in conn.execute("PRAGMA table_info(audit_trail)").fetchall()}
     if "trace_id" in existing:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_trail_trace_ts ON audit_trail(trace_id, timestamp ASC)")
+    if "session_id" in existing:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_trail_session_ts ON audit_trail(session_id, timestamp ASC)")
     if _has_hermes_trace_schema(db_path):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_hermes_tool_traces_session_ts ON hermes_tool_traces(session_id, timestamp ASC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_hermes_tool_traces_trace_ts ON hermes_tool_traces(trace_id, timestamp ASC)")
@@ -325,6 +327,11 @@ async def init_db() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_audit_trail_trace_ts "
                 "ON audit_trail(trace_id, timestamp ASC)"
             )
+        if "session_id" in existing:
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_audit_trail_session_ts "
+                "ON audit_trail(session_id, timestamp ASC)"
+            )
         await conn.execute(
             "CREATE TABLE IF NOT EXISTS dashboard_hitl_decisions ("
             "event_id TEXT PRIMARY KEY, "
@@ -415,9 +422,10 @@ def _sessionize(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         real_session_id = row.get("session_id")
         task_id = row.get("task_id")
         
-        # Determine session key: prefer real identifiers, fall back to time-gap
-        if real_session_id:
-            # Real session_id present (e.g., Claude UUID or Hermes session_id)
+        # Determine session key: prefer real identifiers, fall back to time-gap.
+        # audit_trail.session_id is authoritative only for Claude Code rows here.
+        # Hermes real grouping continues to come from hermes_tool_traces session_id/task_id.
+        if real_session_id and "claude-code" in agent_id:
             session_key = f"{agent_id}-session-{real_session_id}"
             last_real_session_key = session_key
             row["session_id"] = session_key
@@ -743,9 +751,13 @@ async def _fetch_rows() -> list[dict[str, Any]]:
         return []
     async with aiosqlite.connect(db_path) as conn:
         conn.row_factory = aiosqlite.Row
+        cursor = await conn.execute("PRAGMA table_info(audit_trail)")
+        existing = {row[1] for row in await cursor.fetchall()}
+        audit_columns = "hash, timestamp, agent_id, action, outcome, reason, prev_hash"
+        if "session_id" in existing:
+            audit_columns += ", session_id"
         cursor = await conn.execute(
-            "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
-            "FROM audit_trail ORDER BY timestamp ASC"
+            f"SELECT {audit_columns} FROM audit_trail ORDER BY timestamp ASC"
         )
         rows = [dict(row) for row in await cursor.fetchall()]
     rows = _sessionize(rows)
@@ -943,6 +955,8 @@ def _audit_trail_select_columns(conn: sqlite3.Connection) -> str:
     existing = {row["name"] for row in conn.execute("PRAGMA table_info(audit_trail)").fetchall()}
     if "human_reason" in existing:
         columns.insert(6, "human_reason")
+    if "session_id" in existing:
+        columns.append("session_id")
     if "trace_id" in existing:
         columns.append("trace_id")
     if "hostname" in existing:
@@ -1319,6 +1333,22 @@ async def _get_session_events_one(session_id: str, limit: int = 20, offset: int 
                     f"ORDER BY timestamp ASC LIMIT ? OFFSET ?",
                     list(audit_hashes) + terminal_list + [limit, offset],
                 ).fetchall()]
+
+            if (
+                not rows
+                and session_type == "session"
+                and "claude-code" in agent_id
+                and session_value
+            ):
+                audit_existing = {row["name"] for row in conn.execute("PRAGMA table_info(audit_trail)").fetchall()}
+                if "session_id" in audit_existing:
+                    audit_columns = _audit_trail_select_columns(conn)
+                    rows = [dict(row) for row in conn.execute(
+                        f"SELECT {audit_columns} FROM audit_trail "
+                        f"WHERE agent_id = ? AND session_id = ? AND outcome IN ({placeholders}) "
+                        "ORDER BY timestamp ASC LIMIT ? OFFSET ?",
+                        [agent_id, session_value] + terminal_list + [limit, offset],
+                    ).fetchall()]
         
         elif is_group_session:
             # Legacy time-gap grouped session - use existing logic
@@ -1604,9 +1634,10 @@ async def get_sessions(
         page_window = limit + offset
         per_agent_limit = max(500, page_window * 50) if agent_id else max(500, page_window * 20)
         all_rows: list[dict[str, Any]] = []
+        audit_columns = _audit_trail_select_columns(conn)
         for a in agent_ids_to_query:
             a_rows = [dict(r) for r in conn.execute(
-                "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
+                f"SELECT {audit_columns} "
                 f"FROM audit_trail WHERE agent_id = ? AND outcome IN ({placeholders}) "
                 "ORDER BY timestamp DESC LIMIT ?",
                 [a] + terminal_list + [per_agent_limit],
@@ -1749,6 +1780,10 @@ async def get_sessions(
                 real_session_key = audit_hash_to_session[h]
             elif ph and ph in audit_hash_to_session:
                 real_session_key = audit_hash_to_session[ph]
+            elif "claude-code" in agent:
+                audit_session_id = (row.get("session_id") or "").strip()
+                if audit_session_id:
+                    real_session_key = f"{agent}-session-{audit_session_id}"
             
             # Determine if we should continue the current group or start a new one
             group = audit_groups[-1] if audit_groups else None

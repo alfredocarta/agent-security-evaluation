@@ -1106,6 +1106,49 @@ def test_claude_events_with_same_transcript_path_group_into_one_session(tmp_path
     assert len(events) == 3
 
 
+def test_claude_audit_trail_session_id_groups_and_returns_events_without_trace_rows(tmp_path, monkeypatch):
+    """Claude audit_trail.session_id is authoritative when claude_tool_traces is empty."""
+    db_path = tmp_path / "asf_test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE audit_trail ("
+        "hash TEXT PRIMARY KEY, timestamp TEXT, agent_id TEXT, action TEXT, "
+        "outcome TEXT, reason TEXT, prev_hash TEXT, session_id TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE claude_tool_traces ("
+        "id TEXT PRIMARY KEY, timestamp TEXT, source TEXT, agent_id TEXT, agent_model TEXT, "
+        "session_id TEXT, transcript_path TEXT, tool_call_id TEXT, claude_tool_name TEXT, "
+        "asf_tool_name TEXT, args_hash TEXT, args_preview TEXT, output_hash TEXT, output_preview TEXT, "
+        "verdict TEXT, outcome TEXT, reason TEXT, trace_id TEXT, audit_hash TEXT, created_at TEXT)"
+    )
+    claude_session_uuid = "3f1e3fb4-1111-4222-9333-abcdef123456"
+    base_ts = datetime(2026, 6, 11, 9, 0, 0)
+    for i, (action, outcome) in enumerate([("Bash", "ALLOWED"), ("Read", "BLOCKED")]):
+        ts = (base_ts + timedelta(seconds=i * 90)).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            "INSERT INTO audit_trail "
+            "(hash, timestamp, agent_id, action, outcome, reason, prev_hash, session_id) "
+            "VALUES (?, ?, 'claude-code', ?, ?, 'ok', ?, ?)",
+            (f"claude-session-event-{i}", ts, action, outcome, f"prev-{i}", claude_session_uuid),
+        )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    sessions = asyncio.run(db.get_sessions(limit=20, offset=0, agent_id="claude-code"))
+
+    assert len(sessions) == 1
+    assert sessions[0].session_id == f"claude-code-session-{claude_session_uuid}"
+    assert "-session-" in sessions[0].session_id
+    assert sessions[0].total_events == 2
+
+    events = asyncio.run(db.get_session_events(sessions[0].session_id, limit=20, offset=0))
+
+    assert [event.event_id for event in events] == ["claude-session-event-0", "claude-session-event-1"]
+    assert [event.action for event in events] == ["Bash", "Read"]
+
+
 def test_events_without_real_ids_fall_back_to_time_gap_grouping(tmp_path, monkeypatch):
     """Events with no session_id/task_id must fall back to 30-second time-gap heuristic."""
     db_path = tmp_path / "asf_test.db"
