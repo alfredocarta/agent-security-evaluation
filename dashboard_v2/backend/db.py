@@ -263,6 +263,13 @@ def _has_table(path: Path, name: str) -> bool:
         return False
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    try:
+        return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    except sqlite3.Error:
+        return set()
+
+
 def get_db_path() -> Path:
     if _ACTIVE_ENV == "test":
         return resolve_test_db_path()
@@ -373,28 +380,105 @@ def _transcript_session_value(transcript_path: str | None) -> str:
 
 
 def _dashboard_cache_is_stale(db_path: Path, cache: dict[str, Any]) -> bool:
-    """Return True when on-disk KPI cache is more than 24h behind audit_trail."""
-    cache_max_ts = _parse_timestamp(cache.get("max_interceptor_ts"))
+    """Return True when on-disk KPI cache is more than 24h behind terminal audit data."""
+    cache_max_ts = _parse_timestamp(cache.get("max_terminal_ts") or cache.get("max_interceptor_ts"))
     if cache_max_ts is None or not _has_audit_schema(db_path):
         return False
 
-    try:
-        with sqlite3.connect(db_path, timeout=2) as conn:
-            row = conn.execute(
-                "SELECT timestamp FROM audit_trail "
-                "WHERE timestamp IS NOT NULL "
-                "ORDER BY timestamp DESC LIMIT 1"
-            ).fetchone()
-    except sqlite3.Error:
-        return False
-
-    actual_latest_ts = _parse_timestamp(row[0]) if row else None
+    actual_latest_ts = _audit_terminal_max_timestamp(db_path)
     if actual_latest_ts is None:
         return False
     try:
         return actual_latest_ts - cache_max_ts > timedelta(hours=24)
     except TypeError:
         return False
+
+
+def _terminal_identity_expr(columns: set[str]) -> str:
+    # New audit rows carry a real trace_id shared by all events for one tool call.
+    # Older fixtures/DBs may not have that column; fall back to the terminal row hash so
+    # legacy data remains visible without double-counting new trace-linked calls.
+    if "trace_id" in columns:
+        return "COALESCE(NULLIF(trace_id, ''), hash)"
+    return "hash"
+
+
+def _terminal_outcome_placeholders() -> tuple[str, list[str]]:
+    terminal_list = list(sorted(TERMINAL_OUTCOMES))
+    return ",".join("?" for _ in terminal_list), terminal_list
+
+
+def _audit_terminal_max_timestamp(db_path: Path, agent_id: str | None = None) -> datetime | None:
+    if not _has_audit_schema(db_path):
+        return None
+    placeholders, terminal_list = _terminal_outcome_placeholders()
+    agent_clause = " AND agent_id = ?" if agent_id else ""
+    params: list[Any] = terminal_list + ([agent_id] if agent_id else [])
+    try:
+        with sqlite3.connect(db_path, timeout=2) as conn:
+            row = conn.execute(
+                "SELECT MAX(timestamp) FROM audit_trail "
+                f"WHERE outcome IN ({placeholders}){agent_clause}",
+                params,
+            ).fetchone()
+    except sqlite3.Error:
+        return None
+    return _parse_timestamp(row[0]) if row and row[0] else None
+
+
+def _audit_terminal_summary(
+    db_path: Path,
+    agent_id: str | None = None,
+    since: str | None = None,
+    after: str | None = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "total": 0,
+        "counts": {},
+        "min_ts": None,
+        "max_ts": None,
+    }
+    if not _has_audit_schema(db_path):
+        return result
+
+    placeholders, terminal_list = _terminal_outcome_placeholders()
+    where = [f"outcome IN ({placeholders})"]
+    params: list[Any] = list(terminal_list)
+    if since is not None:
+        where.append("timestamp >= ?")
+        params.append(since)
+    if after is not None:
+        where.append("timestamp > ?")
+        params.append(after)
+    if agent_id:
+        where.append("agent_id = ?")
+        params.append(agent_id)
+    where_sql = " AND ".join(where)
+
+    try:
+        with sqlite3.connect(db_path, timeout=5) as conn:
+            conn.row_factory = sqlite3.Row
+            identity = _terminal_identity_expr(_table_columns(conn, "audit_trail"))
+            row = conn.execute(
+                f"SELECT COUNT(DISTINCT {identity}) AS total, MIN(timestamp) AS min_ts, MAX(timestamp) AS max_ts "
+                f"FROM audit_trail WHERE {where_sql}",
+                params,
+            ).fetchone()
+            if row:
+                result["total"] = int(row["total"] or 0)
+                result["min_ts"] = _parse_timestamp(row["min_ts"]) if row["min_ts"] else None
+                result["max_ts"] = _parse_timestamp(row["max_ts"]) if row["max_ts"] else None
+            result["counts"] = {
+                str(r["outcome"]): int(r["count"] or 0)
+                for r in conn.execute(
+                    f"SELECT outcome, COUNT(DISTINCT {identity}) AS count "
+                    f"FROM audit_trail WHERE {where_sql} GROUP BY outcome",
+                    params,
+                ).fetchall()
+            }
+    except sqlite3.Error:
+        return result
+    return result
 
 
 def _sessionize(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1991,9 +2075,12 @@ def _get_audit_latency_metrics(db_path: Path, agent_id: str | None = None) -> di
         return {"avg_latency_ms": 0.0, "p95_latency_ms": 0.0}
 
     agent_clause = " AND s.agent_id = ?" if agent_id else ""
-    agent_params: list[Any] = [agent_id] if agent_id else []
+    placeholders, terminal_list = _terminal_outcome_placeholders()
+    agent_params: list[Any] = terminal_list + ([agent_id] if agent_id else [])
     try:
         with sqlite3.connect(db_path, timeout=2) as conn:
+            if "trace_id" not in _table_columns(conn, "audit_trail"):
+                return {"avg_latency_ms": 0.0, "p95_latency_ms": 0.0}
             latencies = [
                 float(row[0] or 0.0)
                 for row in conn.execute(
@@ -2002,8 +2089,8 @@ def _get_audit_latency_metrics(db_path: Path, agent_id: str | None = None) -> di
                     "FROM audit_trail s "
                     "JOIN audit_trail t ON t.trace_id = s.trace_id "
                     "WHERE s.outcome = 'INTERCEPTOR_START' "
-                    "AND t.outcome != 'INTERCEPTOR_START' "
-                    f"AND s.trace_id IS NOT NULL{agent_clause}",
+                    f"AND t.outcome IN ({placeholders}) "
+                    f"AND s.trace_id IS NOT NULL AND s.trace_id != ''{agent_clause}",
                     agent_params,
                 ).fetchall()
             ]
@@ -2070,10 +2157,10 @@ async def get_provenance() -> dict[str, str | None]:
         return cached
 
     max_ts: str | None = None
+    latest_terminal = _audit_terminal_max_timestamp(db_path)
+    if latest_terminal is not None:
+        max_ts = latest_terminal.isoformat()
     with sqlite3.connect(db_path, timeout=10) as conn:
-        row = conn.execute("SELECT MAX(timestamp) FROM audit_trail").fetchone()
-        if row and row[0]:
-            max_ts = str(row[0])
         if _has_hermes_trace_schema(db_path):
             hrow = conn.execute("SELECT MAX(timestamp) FROM hermes_tool_traces").fetchone()
             if hrow and hrow[0]:
@@ -2110,39 +2197,53 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
         # from audit_trail only; hermes_tool_traces stays as operational detail and as
         # the latency source (audit_trail has no latency column), and must not be summed
         # in here or the same Hermes call is counted twice.
-        counts = cache.get("outcome_counts", {})
+        counts = cache.get("terminal_outcome_counts") or cache.get("outcome_counts", {})
+        has_cached_terminal_aggregate = bool(cache.get("terminal_trace_count")) or any(
+            int(counts.get(outcome, 0)) for outcome in TERMINAL_OUTCOMES
+        )
+        if not has_cached_terminal_aggregate:
+            # Older cache files could be INTERCEPTOR_START-centric. Do not consume that
+            # value as a call count; refresh the terminal distinct-call aggregate from
+            # audit_trail so cached and live paths agree with the one-terminal-event model.
+            refreshed = _audit_terminal_summary(db_path)
+            counts = refreshed["counts"]
+            cache["terminal_trace_count"] = refreshed["total"]
+            cache["max_terminal_ts"] = refreshed["max_ts"].isoformat() if refreshed.get("max_ts") else None
+            cache["min_terminal_ts"] = refreshed["min_ts"].isoformat() if refreshed.get("min_ts") else None
         # Exclude access-control denials (agent suspended / RBAC) from the KPI figures:
         # they are gate rejections, not content-inspection decisions (still shown in the
         # stage funnel's Governance / RBAC bucket).
         gov = _governance_rbac_counts(db_path, None)
-        total_tool_calls = max(0, int(counts.get("INTERCEPTOR_START", 0)) - gov["total"])
-        blocked = max(0, sum(int(counts.get(outcome, 0)) for outcome in BLOCK_OUTCOMES) - gov["total"])
-        allowed = sum(int(counts.get(outcome, 0)) for outcome in ALLOW_OUTCOMES)
+        cached_terminal_total = int(
+            cache.get("terminal_trace_count")
+            or sum(int(counts.get(outcome, 0)) for outcome in TERMINAL_OUTCOMES)
+        )
+        cache_max_raw = cache.get("max_terminal_ts") or cache.get("max_interceptor_ts")
+        cache_min_raw = cache.get("min_terminal_ts") or cache.get("min_interceptor_ts")
+        live_after_cache = _audit_terminal_summary(db_path, after=cache_max_raw) if cache_max_raw else {"total": 0, "counts": {}, "max_ts": None}
+        live_counts = live_after_cache.get("counts", {})
+        total_tool_calls = max(0, cached_terminal_total + int(live_after_cache.get("total", 0)) - gov["total"])
+        blocked = max(
+            0,
+            sum(int(counts.get(outcome, 0)) + int(live_counts.get(outcome, 0)) for outcome in BLOCK_OUTCOMES) - gov["total"],
+        )
+        allowed = sum(int(counts.get(outcome, 0)) + int(live_counts.get(outcome, 0)) for outcome in ALLOW_OUTCOMES)
         hitl = _count_pending_hitl(db_path, None)
         terminal = blocked + allowed + hitl
-        max_ts = _parse_timestamp(cache.get("max_interceptor_ts"))
+        max_ts = live_after_cache.get("max_ts") or _audit_terminal_max_timestamp(db_path) or _parse_timestamp(cache_max_raw)
         # The cache only holds lifetime aggregates and freshness, not a windowed count.
-        # The previous heuristic reported the ENTIRE INTERCEPTOR_START total as "last 24h"
-        # whenever the newest event was recent, which on the multi-million-row DB inflates
-        # the 24h figure massively. Compute the real 24h count directly: comparing the raw
-        # timestamp against a precomputed cutoff lets idx_audit_trail_outcome_timestamp
-        # serve it as a bounded range scan, so it stays cheap and is not a full aggregate.
-        tool_calls_last_24h = 0
-        if _has_audit_schema(db_path):
-            cutoff_24h = (datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
-            with sqlite3.connect(db_path) as conn:
-                tool_calls_last_24h = conn.execute(
-                    "SELECT COUNT(*) FROM audit_trail "
-                    "WHERE outcome = 'INTERCEPTOR_START' AND timestamp >= ?",
-                    (cutoff_24h,),
-                ).fetchone()[0]
-        tool_calls_last_24h = max(0, tool_calls_last_24h - gov["last_24h"])
+        # Compute the real 24h distinct-call count directly over terminal rows so the
+        # Overview updates immediately after one-terminal-event calls and never relies on
+        # removed INTERCEPTOR_START rows.
+        cutoff_24h = (datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+        last_24h_summary = _audit_terminal_summary(db_path, since=cutoff_24h)
+        tool_calls_last_24h = max(0, int(last_24h_summary["total"]) - gov["last_24h"])
 
-        min_ts = _parse_timestamp(cache.get("min_interceptor_ts"))
+        min_ts = _parse_timestamp(cache_min_raw) or last_24h_summary.get("min_ts")
         avg_daily_calls = 0.0
         if min_ts and max_ts and max_ts > min_ts:
             days = max((max_ts - min_ts).total_seconds() / 86400, 1.0)
-            avg_daily_calls = int(counts.get("INTERCEPTOR_START", 0)) / days
+            avg_daily_calls = total_tool_calls / days
         calls_trend_pct = None
         if avg_daily_calls:
             calls_trend_pct = ((tool_calls_last_24h - avg_daily_calls) / avg_daily_calls) * 100
@@ -2180,31 +2281,11 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
             db_source=db_source,
         )
 
-    agent_clause = " AND agent_id = ?" if agent_id else ""
-    agent_params: list[Any] = [agent_id] if agent_id else []
-    with sqlite3.connect(db_path) as conn:
-        # audit_trail is authoritative (see cache branch above): count only from it,
-        # never add hermes_tool_traces on top or Hermes calls are double-counted.
-        total_tool_calls = conn.execute(
-            f"SELECT COUNT(*) FROM audit_trail WHERE outcome = 'INTERCEPTOR_START'{agent_clause}",
-            agent_params,
-        ).fetchone()[0]
-        cutoff_24h = (datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
-        audit_calls_last_24h = conn.execute(
-            "SELECT COUNT(*) FROM audit_trail WHERE outcome = 'INTERCEPTOR_START' "
-            f"AND timestamp >= ?{agent_clause}",
-            [cutoff_24h] + agent_params,
-        ).fetchone()[0]
-        placeholders = ",".join("?" for _ in TERMINAL_OUTCOMES)
-        counts = dict(conn.execute(
-            "SELECT outcome, COUNT(*) FROM audit_trail "
-            f"WHERE outcome IN ({placeholders}){agent_clause} GROUP BY outcome",
-            list(sorted(TERMINAL_OUTCOMES)) + agent_params,
-        ).fetchall())
-        latest_ts = conn.execute(
-            f"SELECT MAX(timestamp) FROM audit_trail WHERE 1=1{agent_clause}",
-            agent_params,
-        ).fetchone()[0]
+    cutoff_24h = (datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+    lifetime_summary = _audit_terminal_summary(db_path, agent_id=agent_id)
+    last_24h_summary = _audit_terminal_summary(db_path, agent_id=agent_id, since=cutoff_24h)
+    counts = lifetime_summary["counts"]
+    latest_ts = lifetime_summary["max_ts"]
     # Exclude access-control denials (agent suspended / RBAC) from the KPI figures: they
     # are gate rejections, not content-inspection decisions (still in the funnel bucket).
     gov = _governance_rbac_counts(db_path, agent_id)
@@ -2212,8 +2293,8 @@ async def get_metrics(agent_id: str | None = None) -> KPIMetrics:
     allowed = sum(counts.get(outcome, 0) for outcome in ALLOW_OUTCOMES)
     hitl = _count_pending_hitl(db_path, agent_id)
     terminal = blocked + allowed + hitl
-    total_tool_calls = max(0, total_tool_calls - gov["total"])
-    audit_calls_last_24h = max(0, audit_calls_last_24h - gov["last_24h"])
+    total_tool_calls = max(0, int(lifetime_summary["total"]) - gov["total"])
+    audit_calls_last_24h = max(0, int(last_24h_summary["total"]) - gov["last_24h"])
     return KPIMetrics(
         total_tool_calls=total_tool_calls,
         detection_rate=(blocked / terminal) if terminal else 0.0,

@@ -398,22 +398,22 @@ def _create_cache_branch_db(path):
     conn.execute(
         "CREATE TABLE audit_trail ("
         "hash TEXT PRIMARY KEY, timestamp TEXT, agent_id TEXT, action TEXT, "
-        "outcome TEXT, reason TEXT, prev_hash TEXT)"
+        "outcome TEXT, reason TEXT, prev_hash TEXT, trace_id TEXT)"
     )
     now = datetime.utcnow()
     for i in range(3):  # within 24h
         ts = (now - timedelta(hours=1, minutes=i)).strftime("%Y-%m-%d %H:%M:%S")
         conn.execute(
-            "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
-            "VALUES (?, ?, 'claude-code-agent', 'shell', 'INTERCEPTOR_START', 'Interceptor invoked', NULL)",
-            (f"recent{i:03d}", ts),
+            "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash, trace_id) "
+            "VALUES (?, ?, 'claude-code-agent', 'shell', 'HEURISTIC_CLEAR', 'Cleared', NULL, ?)",
+            (f"recent{i:03d}", ts, f"recent-trace-{i:03d}"),
         )
     for i in range(2):  # older than 24h
         ts = (now - timedelta(days=3, minutes=i)).strftime("%Y-%m-%d %H:%M:%S")
         conn.execute(
-            "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash) "
-            "VALUES (?, ?, 'claude-code-agent', 'shell', 'INTERCEPTOR_START', 'Interceptor invoked', NULL)",
-            (f"old{i:03d}", ts),
+            "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash, trace_id) "
+            "VALUES (?, ?, 'claude-code-agent', 'shell', 'HEURISTIC_CLEAR', 'Cleared', NULL, ?)",
+            (f"old{i:03d}", ts, f"old-trace-{i:03d}"),
         )
     conn.commit()
     conn.close()
@@ -441,6 +441,68 @@ def test_cache_branch_last_24h_is_windowed_not_lifetime_total(tmp_path, monkeypa
     assert metrics.blocked_count == 400
     assert metrics.allowed_count == 600
     assert metrics.tool_calls_last_24h == 3
+
+
+def _create_terminal_only_kpi_db(path):
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE audit_trail ("
+        "hash TEXT PRIMARY KEY, timestamp TEXT, agent_id TEXT, action TEXT, "
+        "outcome TEXT, reason TEXT, prev_hash TEXT, trace_id TEXT)"
+    )
+    now = datetime.utcnow()
+    rows = [
+        ("call-a", "HEURISTIC_CLEAR", now - timedelta(minutes=2), "ok"),
+        ("call-b", "BLOCKED", now - timedelta(minutes=1), "Stage 1 regex match"),
+        ("call-c", "KILL_SWITCH", now - timedelta(days=2), "Stage 2.5 DeBERTa"),
+    ]
+    for trace_id, outcome, ts, reason in rows:
+        conn.execute(
+            "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash, trace_id) "
+            "VALUES (?, ?, 'hermes-live-agent', 'terminal', ?, ?, NULL, ?)",
+            (f"hash-{trace_id}", ts.strftime("%Y-%m-%d %H:%M:%S.%f"), outcome, reason, trace_id),
+        )
+    conn.commit()
+    conn.close()
+
+
+def test_metrics_count_distinct_terminal_trace_ids_without_interceptor_start(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_terminal_only_kpi_db(db_path)
+    _point_dashboard_to(db_path, monkeypatch)
+    monkeypatch.setattr(db, "_load_dashboard_cache", lambda: {})
+
+    metrics = asyncio.run(db.get_metrics(agent_id="hermes-live-agent"))
+
+    assert metrics.total_tool_calls == 3
+    assert metrics.tool_calls_last_24h == 2
+    assert metrics.allowed_count == 1
+    assert metrics.blocked_count == 2
+    assert metrics.avg_latency_ms == 0.0
+    assert metrics.p95_latency_ms == 0.0
+    assert metrics.data_as_of is not None
+
+
+def test_cache_branch_counts_recent_terminal_trace_ids_and_freshness(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_terminal_only_kpi_db(db_path)
+    _point_dashboard_to(db_path, monkeypatch)
+    now = datetime.utcnow()
+    fake_cache = {
+        "terminal_trace_count": 1,
+        "terminal_outcome_counts": {"HEURISTIC_CLEAR": 1},
+        "max_terminal_ts": (now - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"),
+        "min_terminal_ts": (now - timedelta(days=10)).strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    monkeypatch.setattr(db, "_load_dashboard_cache", lambda: fake_cache)
+    monkeypatch.setattr(db, "_dashboard_cache_is_stale", lambda *a, **k: False)
+
+    metrics = asyncio.run(db.get_metrics())
+
+    assert metrics.tool_calls_last_24h == 2
+    assert metrics.total_tool_calls == 3
+    assert metrics.data_as_of is not None
+    assert db._parse_timestamp(metrics.data_as_of) >= now - timedelta(minutes=5)
 
 
 def _create_charts_db(path):
