@@ -147,6 +147,39 @@ def test_compliance_drilldown_supports_limit_offset_and_offset_cache(tmp_path, m
     assert ("compliance_events", "Art. 12", 20, 20, "7d") in db._RUNTIME_CACHE
 
 
+def test_compliance_drilldown_preserves_real_trace_id_and_counts_unique_calls(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_trace_test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE audit_trail ("
+        "hash TEXT PRIMARY KEY, timestamp TEXT, agent_id TEXT, action TEXT, "
+        "outcome TEXT, reason TEXT, prev_hash TEXT, trace_id TEXT, session_id TEXT)"
+    )
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S.%f")
+    conn.execute(
+        "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash, trace_id, session_id) "
+        "VALUES ('start-hash', ?, 'hermes-live-agent', 'Bash', 'INTERCEPTOR_START', 'Interceptor invoked', '', 'real-trace-1', 'sess-1')",
+        (now,),
+    )
+    conn.execute(
+        "INSERT INTO audit_trail (hash, timestamp, agent_id, action, outcome, reason, prev_hash, trace_id, session_id) "
+        "VALUES ('terminal-hash', ?, 'hermes-live-agent', 'Bash', 'HEURISTIC_CLEAR', 'fast-path allow', 'start-hash', 'real-trace-1', 'sess-1')",
+        (now,),
+    )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    events = asyncio.run(db.get_compliance_events("Art. 12", limit=10, offset=0))
+    trace_ids = {event.trace_id for event in events}
+    session_ids = {event.session_id for event in events}
+
+    assert len(events) == 2
+    assert trace_ids == {"real-trace-1"}
+    assert session_ids == {"sess-1"}
+    assert asyncio.run(db.get_total_trace_count()) == 1
+
+
 def test_session_detail_supports_limit_offset_and_cache(tmp_path, monkeypatch):
     db_path = tmp_path / "asf_test.db"
     _create_test_db(db_path)

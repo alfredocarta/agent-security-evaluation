@@ -16,27 +16,28 @@ const { createApp } = Vue;
         return [...new Set(this.timelineAllEvents.map(ev => ev.agent_id).filter(Boolean))].sort();
       },
       timelineEvents() {
-        const filtered = this.timelineAllEvents
+        const visible = this.timelineAllEvents
           .filter(ev => !this.timelineAgentFilter || ev.agent_id === this.timelineAgentFilter)
-          .filter(ev => !this.timelineOutcomeFilter || ev.outcome === this.timelineOutcomeFilter)
           .slice()
-          .sort((a, b) => this.timelineTime(b) - this.timelineTime(a));
-        const threshold = this.timelineClusterMs();
-        const buckets = new Map();
-        for (const ev of filtered) {
-          const time = this.timelineTime(ev);
-          const bucket = Math.floor(time / threshold) * threshold;
-          const agentId = ev.agent_id || '__none__';
-          const key = `${this.timelineWindow}:${bucket}:${agentId}`;
-          if (!buckets.has(key)) buckets.set(key, []);
-          buckets.get(key).push(ev);
+          .sort((a, b) => this.timelineTime(a) - this.timelineTime(b));
+        const calls = new Map();
+        for (const ev of visible) {
+          const traceId = String(ev.trace_id || '').trim();
+          const key = traceId || `legacy:${ev.event_id || ev.timestamp || Math.random()}`;
+          if (!calls.has(key)) calls.set(key, []);
+          calls.get(key).push(ev);
         }
         const items = [];
-        for (const [key, events] of buckets.entries()) {
+        for (const [key, events] of calls.entries()) {
+          events.sort((a, b) => this.timelineTime(a) - this.timelineTime(b));
+          const summary = this.timelineTerminalEvent(events);
+          const outcome = String(summary?.outcome || summary?.verdict || '').toUpperCase();
+          if (this.timelineOutcomeFilter && outcome !== this.timelineOutcomeFilter) continue;
           if (events.length > 1) {
-            items.push({ type: 'cluster', key, events, count: events.length, timestamp: events[0].timestamp });
+            items.push({ type: 'call', key: `call:${key}`, event: summary, events, count: events.length, timestamp: summary.timestamp });
           } else {
-            events.forEach(ev => items.push({ type: 'event', key: ev.event_id || `${key}:${ev.timestamp}`, event: ev }));
+            const ev = events[0];
+            items.push({ type: 'event', key: ev.event_id || `${key}:${ev.timestamp}`, event: ev });
           }
         }
         return items.sort((a, b) => this.timelineItemTime(b) - this.timelineItemTime(a));
@@ -89,7 +90,8 @@ const { createApp } = Vue;
         return d ? d.getTime() : 0;
       },
       timelineItemTime(item) {
-        return item.type === 'cluster' ? this.timelineTime(item.events[0]) : this.timelineTime(item.event);
+        if (item.type === 'cluster' || item.type === 'call') return this.timelineTime(item.event || item.events[0]);
+        return this.timelineTime(item.event);
       },
       timelineLabel(v) {
         const d = this.parseUtcDate(v);
@@ -112,18 +114,26 @@ const { createApp } = Vue;
       },
       timelineColor(ev) {
         const outcome = String(ev?.outcome || ev?.verdict || '').toUpperCase();
-        if (outcome === 'DENY' || outcome === 'KILL_SWITCH') return '#e05252';
-        if (outcome === 'BLOCKED') return '#c0392b';
-        if (outcome === 'ALLOWED' || outcome === 'ALLOW') return '#52c47a';
-        if (outcome === 'HITL_REQUESTED' || outcome === 'HITL') return '#f0a500';
+        const allow = new Set(['ALLOW', 'ALLOWED', 'HEURISTIC_CLEAR', 'HITL_APPROVED']);
+        const hitl = new Set(['HITL', 'HITL_REQUESTED']);
+        const deny = new Set(['DENY', 'BLOCK', 'BLOCKED', 'KILL_SWITCH', 'OUTPUT_BLOCK', 'L1.5_BLOCK', 'ONNX_BLOCK', 'HEURISTIC_BLOCK', 'HITL_REJECTED']);
+        if (allow.has(outcome)) return '#52c47a';
+        if (deny.has(outcome) || outcome.endsWith('_BLOCK')) return '#c0392b';
+        if (hitl.has(outcome)) return '#f0a500';
+        if (outcome === 'INTERCEPTOR_START') return '#888';
         return '#888';
+      },
+      timelineTerminalEvent(events) {
+        const terminal = new Set(['ALLOWED', 'HEURISTIC_CLEAR', 'BLOCKED', 'KILL_SWITCH', 'OUTPUT_BLOCK', 'L1.5_BLOCK', 'ONNX_BLOCK', 'HEURISTIC_BLOCK', 'HITL_REQUESTED', 'HITL_APPROVED', 'HITL_REJECTED']);
+        const ordered = events.slice().sort((a, b) => this.timelineTime(a) - this.timelineTime(b));
+        return ordered.slice().reverse().find(ev => terminal.has(String(ev?.outcome || '').toUpperCase())) || ordered[ordered.length - 1];
       },
       timelineBadgeStyle(ev) {
         const color = this.timelineColor(ev);
         return { color, borderColor: `${color}80`, background: `${color}20` };
       },
       timelineClusterStyle(item) {
-        const color = this.timelineColor(item.events[0]);
+        const color = this.timelineColor(item.event || item.events[0]);
         return { background: color, borderColor: '#fff' };
       },
       timelineTooltip(ev) {

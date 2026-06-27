@@ -60,6 +60,7 @@ This view maps recorded ASF audit events to EU AI Act articles as supporting evi
 <option value="">All outcomes</option>
 <option value="DENY">DENY</option>
 <option value="ALLOWED">ALLOWED</option>
+<option value="HEURISTIC_CLEAR">HEURISTIC_CLEAR</option>
 <option value="HITL_REQUESTED">HITL_REQUESTED</option>
 <option value="KILL_SWITCH">KILL_SWITCH</option>
 <option value="BLOCKED">BLOCKED</option>
@@ -74,6 +75,24 @@ This view maps recorded ASF audit events to EU AI Act articles as supporting evi
 <div class="timeline-event-main" @click="openClusterModal(item)">
 <span class="mono timeline-time">{{ timelineLabel(item.timestamp) }}</span>
 <span class="timeline-cluster-summary">{{ item.count }} events — click to open</span>
+</div>
+</template>
+<template v-else-if="item.type === 'call'">
+<button type="button" class="timeline-dot timeline-dot-cluster" :style="timelineClusterStyle(item)" @click="openClusterModal(item)">▾</button>
+<div class="timeline-event-main" @click="openClusterModal(item)">
+<span class="mono timeline-time">{{ timelineLabel(item.event.timestamp) }}</span>
+<span class="timeline-tool">{{ item.event.tool_name || item.event.action || 'unknown tool' }}</span>
+<span class="badge timeline-outcome-badge" :style="timelineBadgeStyle(item.event)">{{ item.event.outcome || item.event.verdict || 'UNKNOWN' }}</span>
+<span :class="stageBadgeClass(item.event.stage)">{{ item.event.stage || 'Unknown stage' }}</span>
+<span class="timeline-reason">{{ truncate(item.event.reason, 120) }}</span>
+<div class="timeline-tooltip">
+<div><b>agent_id</b><span>{{ timelineTooltip(item.event).agent_id }}</span></div>
+<div><b>agent_model</b><span>{{ timelineTooltip(item.event).agent_model }}</span></div>
+<div><b>security_model</b><span>{{ timelineTooltip(item.event).security_model }}</span></div>
+<div><b>confidence</b><span>{{ timelineTooltip(item.event).confidence }}</span></div>
+<div><b>reason</b><span>{{ timelineTooltip(item.event).reason }}</span></div>
+<div><b>latency_ms</b><span>{{ timelineTooltip(item.event).latency_ms }}</span></div>
+</div>
 </div>
 </template>
 <template v-else>
@@ -110,8 +129,8 @@ This view maps recorded ASF audit events to EU AI Act articles as supporting evi
 <div class="modal-card" style="width:min(780px,100%);max-height:80vh;display:flex;flex-direction:column;">
 <div class="modal-hdr">
 <div class="modal-title">
-<span>{{ modalCluster.count }} events</span>
-<span style="font-size:12px;font-weight:400;color:var(--text-muted);">clustered · {{ timelineLabel(modalCluster.timestamp) }}</span>
+<span>{{ modalCluster.type === 'call' ? (modalCluster.event.tool_name || modalCluster.event.action || 'unknown tool') : modalCluster.count + ' events' }}</span>
+<span style="font-size:12px;font-weight:400;color:var(--text-muted);">{{ modalCluster.type === 'call' ? modalCluster.count + ' stage events' : 'clustered' }} · {{ timelineLabel(modalCluster.timestamp) }}</span>
 </div>
 <button class="modal-btn" @click="closeModal()" style="min-width:unset;padding:4px 10px;">✕</button>
 </div>

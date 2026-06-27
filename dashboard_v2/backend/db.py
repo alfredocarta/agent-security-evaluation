@@ -2549,9 +2549,10 @@ async def get_compliance_events(article_code: str, limit: int = 500, offset: int
             audit_table = "audit_trail" if READ_ONLY_AUDIT_DB else "audit_trail INDEXED BY idx_audit_trail_agent_timestamp"
             per_agent_limit = limit + offset
             rows = []
+            audit_columns = _audit_trail_select_columns(conn)
             for agent in sorted(EVAL_TOOL_AGENTS):
                 rows.extend(dict(row) for row in conn.execute(
-                    "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
+                    f"SELECT {audit_columns} "
                     f"FROM {audit_table} "
                     "WHERE agent_id = ? AND timestamp >= ? ORDER BY timestamp DESC LIMIT ?",
                     (agent, cutoff, per_agent_limit),
@@ -2559,10 +2560,11 @@ async def get_compliance_events(article_code: str, limit: int = 500, offset: int
             rows.sort(key=lambda r: str(r.get("timestamp") or ""), reverse=True)
             rows = rows[offset:offset + limit]
         else:
+            audit_columns = _audit_trail_select_columns(conn)
             if outcomes is _ALL_OUTCOMES:
                 audit_table = "audit_trail" if READ_ONLY_AUDIT_DB else "audit_trail INDEXED BY idx_audit_trail_timestamp_desc"
                 query = (
-                    "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
+                    f"SELECT {audit_columns} "
                     f"FROM {audit_table} "
                     "WHERE timestamp >= ?"
                 )
@@ -2572,7 +2574,7 @@ async def get_compliance_events(article_code: str, limit: int = 500, offset: int
                 # drill-downs instead of forcing a timestamp-only scan over the full table.
                 placeholders = ",".join("?" for _ in outcomes)
                 query = (
-                    "SELECT hash, timestamp, agent_id, action, outcome, reason, prev_hash "
+                    f"SELECT {audit_columns} "
                     f"FROM audit_trail WHERE outcome IN ({placeholders}) AND timestamp >= ?"
                 )
                 params = list(sorted(outcomes)) + [cutoff]
@@ -2582,8 +2584,8 @@ async def get_compliance_events(article_code: str, limit: int = 500, offset: int
             rows = [dict(row) for row in conn.execute(query, params).fetchall()]
     for row in rows:
         key = (row.get("prev_hash") or row.get("hash") or "")[:12]
-        row["trace_id"] = f"trace-{key}"
-        row["session_id"] = f"{row.get('agent_id') or 'unknown-agent'}-{key}"
+        row["trace_id"] = row.get("trace_id") or f"trace-{key}"
+        row["session_id"] = row.get("session_id") or f"{row.get('agent_id') or 'unknown-agent'}-{key}"
     return _cache_set(cache_key, [_normalize_event(row) for row in rows], ttl=20.0)
 
 
@@ -2817,12 +2819,19 @@ async def get_total_event_count() -> int:
 
 
 async def get_total_trace_count() -> int:
-    """Count intercepted tool calls using cached INTERCEPTOR_START count."""
-    cache = _load_dashboard_cache()
-    if cache:
-        return int(cache.get("outcome_counts", {}).get("INTERCEPTOR_START", 0))
+    """Count unique intercepted tool calls, preferring real trace_id values."""
     db_path = get_db_path()
     if not _has_audit_schema(db_path):
         return 0
     with sqlite3.connect(db_path) as conn:
-        return conn.execute("SELECT COUNT(*) FROM audit_trail WHERE outcome = 'INTERCEPTOR_START'").fetchone()[0]
+        conn.row_factory = sqlite3.Row
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(audit_trail)").fetchall()}
+        if "trace_id" in existing:
+            count = conn.execute(
+                "SELECT COUNT(DISTINCT trace_id) FROM audit_trail "
+                "WHERE trace_id IS NOT NULL AND TRIM(trace_id) != ''"
+            ).fetchone()[0]
+            if count:
+                return int(count)
+        # Legacy rows did not persist trace_id; INTERCEPTOR_START is one row per intercepted call.
+        return int(conn.execute("SELECT COUNT(*) FROM audit_trail WHERE outcome = 'INTERCEPTOR_START'").fetchone()[0] or 0)
