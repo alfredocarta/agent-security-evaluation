@@ -760,27 +760,52 @@ def _agent_metadata(agent_id: str, agent_type: str | None = None, agent_model: s
 
 
 def _legacy_audit_duration_ms(conn: sqlite3.Connection, terminal_row: dict[str, Any]) -> int:
-    """Compute legacy audit-trail tool-call latency by walking back to INTERCEPTOR_START.
+    """Compute audit-trail tool-call latency for terminal audit events.
 
-    Claude Code MCP events are stored only in audit_trail, not hermes_tool_traces, so
-    they do not have tool_duration_ms/asf_latency_ms. The terminal row points back
-    through the hash chain; the first INTERCEPTOR_START in that chain is the start of
-    the ASF decision for this tool call.
+    New daemon rows carry a real trace_id shared by every event in one tool call.
+    Prefer that bounded call-local window so a single terminal event reports 0 ms
+    instead of walking into an older call through the global hash chain. Only old
+    rows without trace_id fall back to the legacy INTERCEPTOR_START walk-back.
     """
     end_ts = _parse_timestamp(str(terminal_row.get("timestamp") or ""))
+    terminal_trace_id = (terminal_row.get("trace_id") or "").strip()
+    audit_columns = _table_columns(conn, "audit_trail")
+
+    if terminal_trace_id and "trace_id" in audit_columns:
+        bounds = conn.execute(
+            "SELECT MIN(timestamp) AS start_ts, MAX(timestamp) AS end_ts "
+            "FROM audit_trail WHERE trace_id = ?",
+            (terminal_trace_id,),
+        ).fetchone()
+        if bounds is None:
+            return 0
+        bounds_dict = dict(bounds)
+        start_ts = _parse_timestamp(str(bounds_dict.get("start_ts") or ""))
+        trace_end_ts = _parse_timestamp(str(bounds_dict.get("end_ts") or ""))
+        if start_ts is None or trace_end_ts is None:
+            return 0
+        return max(0, int((trace_end_ts - start_ts).total_seconds() * 1000))
+
     prev_hash = terminal_row.get("prev_hash")
     if end_ts is None or not prev_hash:
         return 0
 
+    select_columns = "hash, timestamp, outcome, prev_hash"
+    if "trace_id" in audit_columns:
+        select_columns += ", trace_id"
+
     current_hash = prev_hash
     for _ in range(40):
         row = conn.execute(
-            "SELECT hash, timestamp, outcome, prev_hash FROM audit_trail WHERE hash = ?",
+            f"SELECT {select_columns} FROM audit_trail WHERE hash = ?",
             (current_hash,),
         ).fetchone()
         if row is None:
             break
         row_dict = dict(row)
+        row_trace_id = (row_dict.get("trace_id") or "").strip()
+        if row_trace_id and row_trace_id != terminal_trace_id:
+            break
         if row_dict.get("outcome") == "INTERCEPTOR_START":
             start_ts = _parse_timestamp(str(row_dict.get("timestamp") or ""))
             if start_ts is None:

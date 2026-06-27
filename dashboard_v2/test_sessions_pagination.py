@@ -18,7 +18,7 @@ def _create_test_db(path):
     conn.execute(
         "CREATE TABLE audit_trail ("
         "hash TEXT PRIMARY KEY, timestamp TEXT, agent_id TEXT, action TEXT, "
-        "outcome TEXT, reason TEXT, prev_hash TEXT)"
+        "outcome TEXT, reason TEXT, prev_hash TEXT, trace_id TEXT, session_id TEXT)"
     )
     conn.execute(
         "CREATE TABLE hermes_tool_traces ("
@@ -670,6 +670,66 @@ def test_get_sessions_computes_legacy_audit_duration(tmp_path, monkeypatch):
 
     assert len(sessions) == 1
     assert sessions[0].duration_ms == 375
+
+
+def test_get_sessions_bounds_single_terminal_duration_to_trace(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_test_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO audit_trail "
+        "(hash, timestamp, agent_id, action, outcome, reason, prev_hash, trace_id, session_id) "
+        "VALUES ('older-start', '2026-06-03 10:00:00.000000', 'claude-code-agent', "
+        "'shell', 'INTERCEPTOR_START', 'Interceptor invoked', NULL, 'older-trace', 'older-session')"
+    )
+    conn.execute(
+        "INSERT INTO audit_trail "
+        "(hash, timestamp, agent_id, action, outcome, reason, prev_hash, trace_id, session_id) "
+        "VALUES ('fast-terminal', '2026-06-03 11:30:00.000000', 'claude-code-agent', "
+        "'shell', 'ALLOWED', 'fast-path allow', 'older-start', 'current-trace', 'current-session')"
+    )
+    conn.commit()
+    conn.close()
+
+    _point_dashboard_to(db_path, monkeypatch)
+
+    sessions = asyncio.run(db.get_sessions(limit=20, offset=0, agent_id="claude-code-agent"))
+
+    current = next(s for s in sessions if s.session_id.endswith("current-session"))
+    assert current.duration_ms == 0
+
+
+def test_get_sessions_uses_trace_bounds_for_audit_duration(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    _create_test_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO audit_trail "
+        "(hash, timestamp, agent_id, action, outcome, reason, prev_hash, trace_id, session_id) "
+        "VALUES ('trace-start', '2026-06-03 12:00:00.100000', 'claude-code-agent', "
+        "'shell', 'INTERCEPTOR_START', 'Interceptor invoked', NULL, 'trace-call', 'trace-session')"
+    )
+    conn.execute(
+        "INSERT INTO audit_trail "
+        "(hash, timestamp, agent_id, action, outcome, reason, prev_hash, trace_id, session_id) "
+        "VALUES ('trace-stage', '2026-06-03 12:00:00.250000', 'claude-code-agent', "
+        "'shell', 'STAGE_1_START', 'Regex pattern analysis', 'trace-start', 'trace-call', 'trace-session')"
+    )
+    conn.execute(
+        "INSERT INTO audit_trail "
+        "(hash, timestamp, agent_id, action, outcome, reason, prev_hash, trace_id, session_id) "
+        "VALUES ('trace-terminal', '2026-06-03 12:00:00.475000', 'claude-code-agent', "
+        "'shell', 'BLOCKED', 'blocked', 'trace-stage', 'trace-call', 'trace-session')"
+    )
+    conn.commit()
+    conn.close()
+
+    _point_dashboard_to(db_path, monkeypatch)
+
+    sessions = asyncio.run(db.get_sessions(limit=20, offset=0, agent_id="claude-code-agent"))
+
+    trace_session = next(s for s in sessions if s.session_id.endswith("trace-session"))
+    assert trace_session.duration_ms == 375
 
 
 def test_event_explanation_exposes_hermes_input_output_and_model(tmp_path, monkeypatch):
