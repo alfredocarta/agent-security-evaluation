@@ -676,6 +676,53 @@ def test_event_explanation_exposes_claude_input_output_and_model(tmp_path, monke
     assert explanation.tool_output == '{"stdout": "match"}'
 
 
+def test_event_explanation_links_claude_trace_by_audit_trace_id_for_fast_path_allow(tmp_path, monkeypatch):
+    db_path = tmp_path / "asf_test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE audit_trail ("
+        "hash TEXT PRIMARY KEY, timestamp TEXT, agent_id TEXT, action TEXT, "
+        "outcome TEXT, reason TEXT, prev_hash TEXT, trace_id TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE claude_tool_traces ("
+        "id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'claude-code', "
+        "agent_id TEXT NOT NULL, agent_model TEXT, session_id TEXT, transcript_path TEXT, "
+        "tool_call_id TEXT, claude_tool_name TEXT NOT NULL, asf_tool_name TEXT NOT NULL, "
+        "args_hash TEXT NOT NULL, args_preview TEXT, output_hash TEXT, output_preview TEXT, "
+        "verdict TEXT, outcome TEXT, reason TEXT, trace_id TEXT, audit_hash TEXT, created_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO audit_trail "
+        "(hash, timestamp, agent_id, action, outcome, reason, prev_hash, trace_id) "
+        "VALUES ('fast-allow-audit-event', '2026-06-03 15:00:00', 'claude-code-agent', "
+        "'shell', 'ALLOWED', 'fast path clear', NULL, 'shared-fast-trace')"
+    )
+    conn.execute(
+        "INSERT INTO claude_tool_traces "
+        "(id, timestamp, agent_id, agent_model, session_id, tool_call_id, claude_tool_name, "
+        "asf_tool_name, args_hash, args_preview, output_hash, output_preview, verdict, outcome, "
+        "reason, trace_id, audit_hash, created_at) "
+        "VALUES ('claude-row-not-event-id', '2026-06-03T15:00:00', 'claude-code-agent', "
+        "'claude-sonnet-test', 'session-claude', 'call-fast', 'Bash', 'shell', 'args', "
+        "'{\"command\": \"printf fast\"}', 'out', '{\"stdout\": \"fast\"}', "
+        "'ALLOW', 'ALLOWED', 'fast path clear', 'shared-fast-trace', NULL, "
+        "'2026-06-03T15:00:00')"
+    )
+    conn.commit()
+    conn.close()
+    _point_dashboard_to(db_path, monkeypatch)
+
+    explanation = asyncio.run(db.get_event_explanation("fast-allow-audit-event"))
+
+    assert explanation.final_verdict == "ALLOW"
+    assert explanation.final_outcome == "ALLOWED"
+    assert explanation.trace_id == "shared-fast-trace"
+    assert explanation.tool_name == "Bash"
+    assert explanation.tool_input == '{"command": "printf fast"}'
+    assert explanation.tool_output == '{"stdout": "fast"}'
+
+
 def test_hermes_trace_explanation_recovers_full_pipeline_from_audit_trail(tmp_path, monkeypatch):
     db_path = tmp_path / "asf_test.db"
     _create_test_db(db_path)

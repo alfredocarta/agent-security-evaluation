@@ -1118,12 +1118,28 @@ def _audit_chain_for_hermes_trace(conn: sqlite3.Connection, trace_row: dict[str,
     return _audit_chain_for_event(conn, best.get("hash"))
 
 
-def _claude_row_for_event(conn: sqlite3.Connection, event_id: str) -> dict[str, Any] | None:
-    row = conn.execute(
+def _claude_row_for_event(
+    conn: sqlite3.Connection,
+    event_id: str,
+    audit_trace_id: str | None = None,
+) -> dict[str, Any] | None:
+    select_cols = (
         "SELECT id, timestamp, agent_id, agent_model, session_id, transcript_path, tool_call_id, "
         "claude_tool_name, asf_tool_name, args_preview, output_preview, verdict, outcome, reason, "
         "trace_id, audit_hash "
-        "FROM claude_tool_traces WHERE id = ? OR audit_hash = ? OR trace_id = ? LIMIT 1",
+        "FROM claude_tool_traces "
+    )
+
+    # For audit-backed Claude rows, the clicked event_id is the audit_trail.hash, not the
+    # Claude trace id. Prefer the trace_id recorded on the resolved audit event/chain so
+    # fast-path ALLOW rows with no audit_hash back-link still surface args/output previews.
+    if audit_trace_id:
+        row = conn.execute(select_cols + "WHERE trace_id = ? LIMIT 1", (audit_trace_id,)).fetchone()
+        if row is not None:
+            return dict(row)
+
+    row = conn.execute(
+        select_cols + "WHERE id = ? OR audit_hash = ? OR trace_id = ? LIMIT 1",
         (event_id, event_id, event_id),
     ).fetchone()
     return dict(row) if row is not None else None
@@ -1174,7 +1190,12 @@ async def get_event_explanation(event_id: str) -> EventExplanation:
         audit_rows = _audit_chain_for_event(conn, event_id)
         audit_events = [_normalize_event(row) for row in audit_rows]
         if audit_events:
-            claude_row = _claude_row_for_event(conn, event_id) if _has_claude_trace_schema(db_path) else None
+            audit_trace_id = next((row.get("trace_id") for row in reversed(audit_rows) if row.get("trace_id")), None)
+            claude_row = (
+                _claude_row_for_event(conn, event_id, audit_trace_id=audit_trace_id)
+                if _has_claude_trace_schema(db_path)
+                else None
+            )
             if claude_row:
                 context = audit_events[-1]
                 context.agent_model = claude_row.get("agent_model") or context.agent_model
